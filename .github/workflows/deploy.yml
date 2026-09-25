@@ -30,8 +30,25 @@ jobs:
           SSH_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          python3 - <<'PY'
+          import os
+          import pathlib
+          raw = os.environ.get("SSH_KEY", "").replace("\r\n", "\n").replace("\r", "\n").strip().strip('"').strip("'")
+          if raw.count("\n") < 2 and "\\n" in raw:
+              raw = raw.replace("\\n", "\n").strip()
+          path = pathlib.Path.home() / ".ssh" / "deploy_key"
+          path.write_text(raw + "\n", encoding="utf-8")
+          path.chmod(0o600)
+          PY
+          if ! ssh-keygen -y -f ~/.ssh/deploy_key > ~/.ssh/deploy_key.pub 2>~/key-error.txt; then
+            echo "VPS_SSH_PRIVATE_KEY is not a usable private key."
+            echo "Paste the private file (not the .pub), with BEGIN/END lines, and no passphrase."
+            cat ~/key-error.txt
+            exit 1
+          fi
+          echo "Connecting as ${VPS_USER}@${VPS_HOST}:${VPS_PORT}"
+          echo "Key offered to the server:"
+          ssh-keygen -lf ~/.ssh/deploy_key.pub
           ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts
           cat > ~/.ssh/config <<EOF
           Host vps
@@ -40,6 +57,10 @@ jobs:
             Port $VPS_PORT
             IdentityFile ~/.ssh/deploy_key
             IdentitiesOnly yes
+            PreferredAuthentications publickey
+            PasswordAuthentication no
+            NumberOfPasswordPrompts 0
+            BatchMode yes
           EOF
 
       - name: Upload application
