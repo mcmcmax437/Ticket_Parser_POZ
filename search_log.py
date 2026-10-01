@@ -15,11 +15,13 @@ def log_search_result(
     *,
     context: str = "search",
 ) -> None:
+    start = settings.notify_from_date.isoformat() if settings.notify_from_date else "-"
     deadline = settings.notify_before_date.isoformat()
     logger.info(
-        "[%s] service=%s | until=%s | total=%d | new=%d | cases=%d | interval=%ds",
+        "[%s] service=%s | from=%s | until=%s | total=%d | new=%d | cases=%d | interval=%ds",
         context,
         settings.service_name,
+        start,
         deadline,
         len(current_slots),
         len(new_slots),

@@ -87,6 +87,7 @@ class SearchWorker:
         current_slots = await asyncio.to_thread(
             client.get_slots_before,
             self.settings.notify_before_date,
+            self.settings.notify_from_date,
         )
         self.known_slots = {slot_key(slot) for slot in current_slots}
         save_state(STATE_FILE, self.known_slots, self.search_key)
@@ -131,6 +132,7 @@ class SearchWorker:
                     current_slots = await asyncio.to_thread(
                         client.get_slots_before,
                         self.settings.notify_before_date,
+                        self.settings.notify_from_date,
                     )
                     current_keys = {slot_key(slot) for slot in current_slots}
                     new_slots = find_new_slots(current_slots, self.known_slots)
@@ -195,6 +197,7 @@ class SearchManager:
             settings.service_id,
             settings.notify_before_date,
             settings.num_cases,
+            settings.notify_from_date,
         )
 
         worker = self._workers.get(key)

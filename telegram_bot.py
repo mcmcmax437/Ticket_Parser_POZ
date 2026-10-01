@@ -18,6 +18,7 @@ from search_session import SearchManager, get_search_manager, SLOT_CONFIRMATIONS
 from services import SERVICE_ORDER
 from ui_format import (
     case_button_label,
+    format_date_range,
     interval_button_label,
     main_menu_html,
     service_button_label,
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 PARSE_MODE = "HTML"
 AWAITING_DATE = "awaiting_date"
+DATE_FIELD = "date_field"
 DATE_PROMPT_MESSAGE_ID = "date_prompt_message_id"
 DATE_PROMPT_SETTINGS_VIEW = "date_prompt_settings_view"
 PANEL_MESSAGE_ID = "panel_message_id"
@@ -104,12 +106,13 @@ def _inline_menu_keyboard(lang: Language, manager: SearchManager) -> InlineKeybo
             *_search_control_rows(lang, manager),
             *_service_rows(lang, selected_service),
             [
+                _from_date_button(lang, config),
                 InlineKeyboardButton(
                     t("btn_until_date", lang, date=config["notify_before_date"]),
-                    callback_data="prompt:date",
+                    callback_data="prompt:until",
                 ),
-                InlineKeyboardButton(t("btn_status", lang), callback_data="action:status"),
             ],
+            [InlineKeyboardButton(t("btn_status", lang), callback_data="action:status")],
             _case_row(lang, selected_cases),
             [
                 InlineKeyboardButton(t("btn_show_panel", lang), callback_data="action:show_panel"),
@@ -132,7 +135,10 @@ def _settings_keyboard(lang: Language, manager: SearchManager) -> InlineKeyboard
                 InlineKeyboardButton(t("btn_lang_uk", lang), callback_data="set:lang:uk"),
             ],
             *_service_rows(lang, selected_service),
-            [InlineKeyboardButton(t("btn_set_deadline", lang), callback_data="prompt:date")],
+            [
+                InlineKeyboardButton(t("btn_set_from", lang), callback_data="prompt:from"),
+                InlineKeyboardButton(t("btn_set_deadline", lang), callback_data="prompt:until"),
+            ],
             _case_row(lang, selected_cases),
             [
                 InlineKeyboardButton(
@@ -369,12 +375,19 @@ async def _delete_message_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: int,
         logger.debug("Could not delete message %s: %s", message_id, exc)
 
 
+def _from_date_button(lang: Language, config: dict) -> InlineKeyboardButton:
+    raw = str(config.get("notify_from_date") or "").strip()
+    label = t("btn_from_date", lang, date=raw) if raw else t("btn_from_any", lang)
+    return InlineKeyboardButton(label, callback_data="prompt:from")
+
+
 async def _prompt_for_date(
     query,
     context: ContextTypes.DEFAULT_TYPE,
     lang: Language,
     *,
     settings_view: bool,
+    field: str,
 ) -> None:
     if query.message:
         _remember_panel(context, query.message.message_id)
@@ -387,11 +400,12 @@ async def _prompt_for_date(
 
     prompt = await context.bot.send_message(
         chat_id=chat_id,
-        text=t("prompt_date_message", lang),
+        text=t("prompt_date_from" if field == "from" else "prompt_date_message", lang),
         parse_mode=PARSE_MODE,
     )
 
     context.user_data[AWAITING_DATE] = True
+    context.user_data[DATE_FIELD] = field
     context.user_data[DATE_PROMPT_MESSAGE_ID] = prompt.message_id
     context.user_data[DATE_PROMPT_SETTINGS_VIEW] = settings_view
 
@@ -401,10 +415,22 @@ async def _apply_date_change(
     chat_id: int,
     parsed: date,
     lang: Language,
-) -> None:
-    update_user_config(notify_before_date=parsed.isoformat())
+) -> bool:
+    field = str(context.user_data.get(DATE_FIELD) or "until")
+    config = load_user_config()
+    if field == "from":
+        until = date.fromisoformat(str(config["notify_before_date"]))
+        if parsed > until:
+            return False
+        update_user_config(notify_from_date=parsed.isoformat())
+    else:
+        raw_from = str(config.get("notify_from_date") or "").strip()
+        if raw_from and parsed < date.fromisoformat(raw_from):
+            return False
+        update_user_config(notify_before_date=parsed.isoformat())
     settings_view = bool(context.user_data.pop(DATE_PROMPT_SETTINGS_VIEW, False))
     context.user_data.pop(AWAITING_DATE, None)
+    context.user_data.pop(DATE_FIELD, None)
 
     await _delete_message_safe(context, chat_id, context.user_data.pop(DATE_PROMPT_MESSAGE_ID, None))
 
@@ -420,6 +446,7 @@ async def _apply_date_change(
 
     if not await _update_panel(context, chat_id, text, keyboard):
         await _send_panel(context, chat_id, text, keyboard)
+    return True
 
 
 async def _ensure_reply_keyboard(context: ContextTypes.DEFAULT_TYPE, chat_id: int, lang: Language) -> None:
@@ -578,7 +605,7 @@ async def _start_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 "search_started",
                 lang,
                 service=settings.service_name,
-                date=config["notify_before_date"],
+                range=format_date_range(config.get("notify_from_date"), config["notify_before_date"]),
                 cases=config["num_cases"],
                 interval=format_interval(int(config["poll_interval_seconds"])),
             ),
@@ -730,19 +757,21 @@ async def _show_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     manager = _manager(context.application)
     current_active = manager.is_running(state_key)
 
-    slots = client.get_slots_before(settings.notify_before_date)
+    slots = client.get_slots_before(settings.notify_before_date, settings.notify_from_date)
     log_search_result(settings, slots, [], context="status")
     badge = t("menu_status_searching", lang) if current_active else t("menu_status_idle", lang)
     active_lines = ""
     for item in manager.list_active():
-        active_lines += f"\n🟢 {item.service_name} · {item.notify_before_date} · {item.num_cases}"
+        active_lines += (
+            f"\n🟢 {item.service_name} · {format_date_range(item.notify_from_date, item.notify_before_date)} · {item.num_cases}"
+        )
 
     text = (
         f"{t('status_title', lang)}\n"
         f"{t('divider', lang)}\n\n"
         f"🔹 {badge}\n"
         f"🔹 {t('settings_service', lang)}: <b>{settings.service_name}</b>\n"
-        f"🔹 {t('status_available', lang, date=settings.notify_before_date.isoformat(), count=len(slots))}\n"
+        f"🔹 {t('status_available', lang, range=format_date_range(settings.notify_from_date, settings.notify_before_date), count=len(slots))}\n"
         f"🔹 {t('status_known', lang, count=len(known_slots))}\n"
         f"🔹 {t('settings_cases', lang)}: <b>{settings.num_cases}</b>"
         f"{active_lines}\n"
@@ -782,9 +811,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     data = query.data or ""
     settings_view = _is_settings_message(query)
 
-    if data == "prompt:date":
+    if data in {"prompt:date", "prompt:until", "prompt:from"}:
         await query.answer()
-        await _prompt_for_date(query, context, lang, settings_view=settings_view)
+        field = "from" if data == "prompt:from" else "until"
+        await _prompt_for_date(query, context, lang, settings_view=settings_view, field=field)
         return
 
     if data == "action:start_search":
@@ -889,7 +919,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await update.message.reply_text(t("invalid_date", lang), parse_mode=PARSE_MODE)
             return
 
-        await _apply_date_change(context, chat.id, parsed, lang)
+        applied = await _apply_date_change(context, chat.id, parsed, lang)
+        if not applied:
+            await update.message.reply_text(t("invalid_date_range", lang), parse_mode=PARSE_MODE)
         return
 
     if text in button_texts("btn_start_search"):

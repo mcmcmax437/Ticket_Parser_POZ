@@ -71,7 +71,7 @@ def run_check(
     *,
     notify_on_start: bool = False,
 ) -> set[str]:
-    current_slots = client.get_slots_before(settings.notify_before_date)
+    current_slots = client.get_slots_before(settings.notify_before_date, settings.notify_from_date)
     current_keys = {slot_key(slot) for slot in current_slots}
 
     if notify_on_start:

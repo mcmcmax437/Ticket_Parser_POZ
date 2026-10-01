@@ -29,7 +29,7 @@ def main() -> None:
     settings = load_settings(require_telegram=not args.dry_run)
     client = QmaticClient(settings)
 
-    slots = client.get_slots_before(settings.notify_before_date)
+    slots = client.get_slots_before(settings.notify_before_date, settings.notify_from_date)
     logger.info("Found %d slot(s) before %s", len(slots), settings.notify_before_date)
 
     for slot in slots:

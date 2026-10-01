@@ -24,6 +24,7 @@ class Settings:
     branch_id: str
     service: ServiceDefinition
     num_cases: int
+    notify_from_date: date | None
     notify_before_date: date
     poll_interval_seconds: int
     notify_on_start: bool
@@ -63,6 +64,8 @@ def load_settings(*, require_telegram: bool = True) -> Settings:
         if not telegram_chat_id:
             raise ValueError("Missing required environment variable: TELEGRAM_CHAT_ID")
 
+    notify_from_raw = str(user_config.get("notify_from_date") or "").strip()
+    notify_from = date.fromisoformat(notify_from_raw) if notify_from_raw else None
     notify_before = str(user_config["notify_before_date"]).strip()
     if not notify_before:
         raise ValueError("notify_before_date is required (format: YYYY-MM-DD)")
@@ -78,6 +81,7 @@ def load_settings(*, require_telegram: bool = True) -> Settings:
         branch_id=str(user_config["branch_id"]),
         service=service,
         num_cases=num_cases,
+        notify_from_date=notify_from,
         notify_before_date=date.fromisoformat(notify_before),
         poll_interval_seconds=int(user_config["poll_interval_seconds"]),
         notify_on_start=bool(user_config["notify_on_start"]),

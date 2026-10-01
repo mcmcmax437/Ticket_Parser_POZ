@@ -12,6 +12,14 @@ def _esc(value: object) -> str:
     return html.escape(str(value))
 
 
+def format_date_range(from_date: object, until_date: object) -> str:
+    start = str(from_date or "").strip()
+    end = str(until_date)
+    if start:
+        return f"{start} → {end}"
+    return f"→ {end}"
+
+
 def _format_active_searches(lang: Language, active: list[ActiveSearchInfo]) -> str:
     if not active:
         return f"<i>{t('no_active_searches', lang)}</i>"
@@ -19,7 +27,7 @@ def _format_active_searches(lang: Language, active: list[ActiveSearchInfo]) -> s
     lines = [f"<b>{t('label_active_searches', lang)} ({len(active)})</b>"]
     for item in active:
         lines.append(
-            f"🟢 {_esc(item.service_name)} · 📅 {_esc(item.notify_before_date)} · 📂 {_esc(item.num_cases)}"
+            f"🟢 {_esc(item.service_name)} · 📅 {_esc(format_date_range(item.notify_from_date, item.notify_before_date))} · 📂 {_esc(item.num_cases)}"
         )
     return "\n".join(lines)
 
@@ -49,7 +57,7 @@ def main_menu_html(
         f"<b>{t('label_service', lang)}</b>\n"
         f"   {_esc(service_name)}\n\n"
         f"<b>{t('label_config', lang)}</b>\n"
-        f"   📅 {_esc(config['notify_before_date'])}"
+        f"   📅 {_esc(format_date_range(config.get('notify_from_date'), config['notify_before_date']))}"
         f"   ·   📂 {_esc(config['num_cases'])}"
         f"   ·   ⏱ {_esc(interval)}\n\n"
         f"{_format_active_searches(lang, active_searches)}\n\n"
@@ -64,6 +72,7 @@ def settings_html(lang: Language, service_name: str, active_searches: list[Activ
         f"{t('settings_title_html', lang)}\n"
         f"{t('divider', lang)}\n\n"
         f"<b>{t('label_service', lang)}</b>  {_esc(service_name)}\n"
+        f"<b>{t('settings_notify_from', lang)}</b>  {_esc(config.get('notify_from_date') or '—')}\n"
         f"<b>{t('settings_notify_before', lang)}</b>  {_esc(config['notify_before_date'])}\n"
         f"<b>{t('settings_cases', lang)}</b>  {_esc(config['num_cases'])}\n"
         f"<b>{t('settings_interval', lang)}</b>  {_esc(interval)}\n\n"

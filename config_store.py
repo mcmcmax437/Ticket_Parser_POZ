@@ -18,6 +18,7 @@ USER_CONFIG_FILE = BASE_DIR / "user_config.json"
 
 DEFAULT_USER_CONFIG: dict[str, Any] = {
     "num_cases": 1,
+    "notify_from_date": "",
     "notify_before_date": "2026-06-15",
     "poll_interval_seconds": 300,
     "notify_on_start": False,
@@ -30,6 +31,7 @@ DEFAULT_USER_CONFIG: dict[str, Any] = {
 def _env_fallback(key: str, default: Any) -> Any:
     mapping = {
         "num_cases": ("NUM_CASES", int),
+        "notify_from_date": ("NOTIFY_FROM_DATE", str),
         "notify_before_date": ("NOTIFY_BEFORE_DATE", str),
         "poll_interval_seconds": ("POLL_INTERVAL_SECONDS", int),
         "notify_on_start": ("NOTIFY_ON_START", lambda v: v.strip().lower() in {"1", "true", "yes", "on"}),

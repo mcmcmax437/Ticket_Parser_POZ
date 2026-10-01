@@ -50,9 +50,11 @@ class QmaticClient:
         payload = response.json()
         return [item["time"] for item in payload]
 
-    def get_slots_before(self, before_date: date) -> list[TimeSlot]:
+    def get_slots_before(self, before_date: date, from_date: date | None = None) -> list[TimeSlot]:
         slots: list[TimeSlot] = []
         for appointment_date in self.get_available_dates():
+            if from_date is not None and appointment_date < from_date:
+                continue
             if appointment_date > before_date:
                 continue
             for time_value in self.get_available_times(appointment_date):
