@@ -5,12 +5,14 @@ import logging
 import sys
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from config import STATE_FILE, Settings, load_settings
 from qmatic_client import QmaticClient, TimeSlot
 from telegram_notifier import TelegramNotifier
+
+UTC = timezone.utc
 
 logging.basicConfig(
     level=logging.INFO,

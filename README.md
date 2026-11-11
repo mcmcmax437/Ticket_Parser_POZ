@@ -68,10 +68,11 @@ Optional: `VPS_PORT` (default `22`), `VPS_APP_DIR` (default `~/ticket-parser`).
 On the server, once:
 
 ```bash
-sudo apt update && sudo apt install -y python3 python3-venv
-sudo loginctl enable-linger "$USER"
+sudo apt update && sudo apt install -y python3 python3.10-venv
 mkdir -p ~/ticket-parser
 ```
+
+`python3-venv` is a package Ubuntu often leaves out, and without it `python3 -m venv` fails with "ensurepip is not available". The bot runs as a **system** service, so `VPS_USER` must be root.
 
 Put `.env` in that directory (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`). Deploys leave `.env`, `user_config.json`, and `state.json` in place. Each restart brings the bot back and sends the menu. An in-progress search does not resume; press **Start search** again.
 

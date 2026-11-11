@@ -11,12 +11,26 @@ fi
 
 cd "$APP_DIR"
 
-python3 -m venv .venv
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "This deploy installs a system-level service, so VPS_USER must be root."
+  exit 1
+fi
+
+# Debian/Ubuntu ship the venv module without ensurepip, so `python3 -m venv`
+# aborts with "ensurepip is not available" unless that package is installed.
+if ! python3 -c 'import ensurepip' 2>/dev/null; then
+  echo "python3-venv is missing on the server. Run once: apt install -y python3.10-venv"
+  exit 1
+fi
+
+# A venv left over without pip is unusable; rebuild it instead of reusing it.
+if [[ ! -x .venv/bin/pip ]]; then
+  python3 -m venv .venv
+fi
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
 
-mkdir -p "$HOME/.config/systemd/user"
-cat > "$HOME/.config/systemd/user/ticket-parser.service" <<UNIT
+cat > /etc/systemd/system/ticket-parser.service <<UNIT
 [Unit]
 Description=Poznan Qmatic ticket monitor
 After=network-online.target
@@ -31,22 +45,13 @@ Restart=always
 RestartSec=5
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 UNIT
 
-uid="$(id -u)"
-export XDG_RUNTIME_DIR="/run/user/${uid}"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
-
-if [[ ! -S "${XDG_RUNTIME_DIR}/bus" ]]; then
-  echo "User systemd is not running. On the server, once: sudo loginctl enable-linger $(id -un)" >&2
-  exit 1
-fi
-
-systemctl --user daemon-reload
-systemctl --user enable ticket-parser
-systemctl --user restart ticket-parser
+systemctl daemon-reload
+systemctl enable ticket-parser
+systemctl restart ticket-parser
 sleep 3
-systemctl --user --no-pager --full status ticket-parser || true
-systemctl --user is-active --quiet ticket-parser
+systemctl --no-pager --full status ticket-parser || true
+systemctl is-active --quiet ticket-parser
 echo "ticket-parser is running in ${APP_DIR}"
