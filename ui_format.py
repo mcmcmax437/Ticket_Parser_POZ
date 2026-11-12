@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import html
+import json
+import re
+import time
 
 from config_store import format_interval, load_user_config
 from i18n import Language, t
 from search_config import ActiveSearchInfo, current_config_active
 from car_config import CarSearchInfo, car_search_info, car_search_key_from_config
 from otomoto_client import CarListing
+from qmatic_client import TimeSlot
 from services import SERVICE_BUTTON_I18N, ServiceKey
+from telegram_notifier import BOOKING_URL
 
 FUEL_LABELS = {
     "petrol": "Benzyna",
@@ -38,10 +43,16 @@ def _format_active_searches(lang: Language, active: list[ActiveSearchInfo]) -> s
 
     lines = [f"<b>{t('label_active_searches', lang)} ({len(active)})</b>"]
     for item in active:
-        lines.append(
-            f"🟢 {_esc(item.service_name)} · 📅 {_esc(format_date_range(item.notify_from_date, item.notify_before_date))} · 📂 {_esc(item.num_cases)}"
-        )
+        lines.append(_active_search_line(item))
     return "\n".join(lines)
+
+
+def _active_search_line(item: ActiveSearchInfo) -> str:
+    return (
+        f"🟢 {_esc(item.service_name)}"
+        f" · 📅 {_esc(format_date_range(item.notify_from_date, item.notify_before_date))}"
+        f" · 📂 {_esc(item.num_cases)}"
+    )
 
 
 def main_menu_html(
@@ -210,3 +221,150 @@ def _car_details(item: CarListing) -> str:
     if item.gearbox:
         parts.append(item.gearbox)
     return " · ".join(parts)
+
+
+# --- Telegram widgets (Bot API 10.4) ---
+
+WIDGET_CSS = (
+    "body{margin:0;padding:10px 12px}"
+    "h3{font-size:16px;margin-bottom:4px}"
+    ".sub{font-size:13px;color:var(--tg-theme-hint-color)}"
+    ".grp{font-size:13px;font-weight:700;margin-top:6px}"
+    ".slot{font-size:13px;font-family:monospace}"
+    ".it{font-size:13px;font-weight:700;margin-top:6px}"
+    ".dt{font-size:12px;color:var(--tg-theme-hint-color)}"
+    ".hd{font-size:14px;font-weight:700}"
+    ".ln{font-size:13px;line-height:1.45}"
+    ".nf{font-size:12px;color:var(--tg-theme-hint-color)}"
+)
+
+STATUS_WIDGET_HTML = (
+    f"<style>{WIDGET_CSS}</style>"
+    "<div class=\"hd\" id=\"h\"></div><div id=\"l\"></div><div class=\"nf\" id=\"n\"></div>"
+    "<script>"
+    "const W=window.TelegramWidget;"
+    "function r(){"
+    "var s=null;"
+    "try{s=JSON.parse(W.chatData)}catch(e){}"
+    "document.getElementById('h').textContent=s?(s.h||''):'';"
+    "var l=document.getElementById('l');l.innerHTML='';"
+    "for(var x of(s.l||[])){var d=document.createElement('div');d.textContent=x;d.className='ln';l.appendChild(d)}"
+    "document.getElementById('n').textContent=s?(s.n||''):'';"
+    "}"
+    "if(W)W.onEvent('chatDataChanged',r);"
+    "r();"
+    "</script>"
+)
+
+CARD_LINE_LIMIT = 6
+WIDGET_CAPTION_URL_LIMIT = 5
+_TAGS = re.compile(r"<[^>]+>")
+
+
+def _plain(value: str) -> str:
+    return html.unescape(_TAGS.sub("", value))
+
+
+def ticket_alert_widget_html(lang: Language, settings, new_slots: list[TimeSlot]) -> str:
+    lines = [
+        f"<h3>{t('notify_new_slots_title', lang)}</h3>",
+        f"<div class=\"sub\">{_esc(settings.service_name)} · {_esc(settings.branch_name)} · {_esc(settings.num_cases)}</div>",
+    ]
+    current_date = None
+    for slot in new_slots:
+        if slot.appointment_date != current_date:
+            current_date = slot.appointment_date
+            lines.append(f"<div class=\"grp\">{_esc(current_date.isoformat())}</div>")
+        lines.append(f"<div class=\"slot\">{_esc(slot.time)}</div>")
+    return f"<style>{WIDGET_CSS}</style>" + "".join(lines)
+
+
+def ticket_alert_caption(lang: Language, settings, new_slots: list[TimeSlot]) -> str:
+    return (
+        f"{t('notify_new_slots_title', lang)} · {len(new_slots)} · "
+        f"{_esc(settings.service_name)} · → {settings.notify_before_date.isoformat()}\n"
+        f"{BOOKING_URL}"
+    )
+
+
+def car_alert_widget_html(
+    lang: Language,
+    info: CarSearchInfo,
+    new_listings: list[CarListing],
+    price_drops: list[tuple[CarListing, int]],
+) -> str:
+    lines = [
+        f"<h3>{t('car_alert_title', lang)}</h3>",
+        f"<div class=\"sub\">🔍 {car_filter_summary(lang, info)}</div>",
+    ]
+    for item in new_listings:
+        lines.append(f"<div class=\"it\">🆕 {_esc(item.title)}</div>")
+        lines.append(f"<div class=\"dt\">{_esc(_car_details(item))}</div>")
+    for item, previous in price_drops:
+        lines.append(f"<div class=\"it\">📉 {_esc(item.title)}</div>")
+        lines.append(f"<div class=\"dt\">{_group(previous)} → {_group(item.price)} zł</div>")
+    return f"<style>{WIDGET_CSS}</style>" + "".join(lines)
+
+
+def car_alert_caption(
+    lang: Language,
+    info: CarSearchInfo,
+    new_listings: list[CarListing],
+    price_drops: list[tuple[CarListing, int]],
+) -> str:
+    urls = [item.url for item in new_listings][:WIDGET_CAPTION_URL_LIMIT]
+    urls += [item.url for item, _ in price_drops][: WIDGET_CAPTION_URL_LIMIT - len(urls)]
+    return (
+        f"{t('car_alert_title', lang)} · {len(new_listings)} 🆕 · {len(price_drops)} 📉 · "
+        f"{_esc(car_filter_summary(lang, info))}\n" + "\n".join(urls)
+    )
+
+
+def _status_badge(
+    lang: Language,
+    ticket_searches: list[ActiveSearchInfo],
+    car_searches: list[CarSearchInfo],
+) -> str:
+    if not ticket_searches and not car_searches:
+        return t("badge_idle", lang)
+    parts = []
+    if ticket_searches:
+        parts.append(f"{t('label_active_searches', lang)} ({len(ticket_searches)})")
+    if car_searches:
+        parts.append(f"{t('label_active_car_searches', lang)} ({len(car_searches)})")
+    return f"🟢 <b>{' · '.join(parts)}</b>"
+
+
+def status_widget_chat_data(
+    lang: Language,
+    ticket_searches: list[ActiveSearchInfo],
+    car_searches: list[CarSearchInfo],
+    checked_at: int,
+) -> str:
+    lines = [_plain(_active_search_line(item)) for item in ticket_searches[:CARD_LINE_LIMIT]]
+    lines += [_plain(car_search_line(lang, item)) for item in car_searches[: CARD_LINE_LIMIT - len(lines)]]
+    hidden = len(ticket_searches) + len(car_searches) - len(lines)
+    if hidden > 0:
+        lines.append(t("widget_more", lang, count=hidden))
+    return json.dumps(
+        {
+            "t": checked_at,
+            "h": _plain(_status_badge(lang, ticket_searches, car_searches)),
+            "l": lines,
+            "n": t("widget_last_check", lang, time=time.strftime("%H:%M", time.localtime(checked_at))),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def status_widget_caption(
+    lang: Language,
+    ticket_searches: list[ActiveSearchInfo],
+    car_searches: list[CarSearchInfo],
+    checked_at: int,
+) -> str:
+    return (
+        f"{_status_badge(lang, ticket_searches, car_searches)}\n"
+        f"{t('widget_last_check', lang, time=time.strftime('%H:%M', time.localtime(checked_at)))}"
+    )

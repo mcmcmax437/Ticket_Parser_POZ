@@ -10,6 +10,7 @@ from car_monitor import CAR_STATE_FILE, find_new_listings, find_price_drops, loa
 from i18n import normalize_language, t
 from otomoto_client import OtomotoClient
 from ui_format import format_car_alert_html
+from widget_sender import refresh_status_card, send_car_alert_widget
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class CarWorker:
             self._loop(application, chat_id),
             name=f"car-{self.search_key[:24]}",
         )
+        await refresh_status_card(application, chat_id, self.language)
 
     async def stop(self) -> None:
         if not self.is_running or self.stop_event is None:
@@ -83,16 +85,24 @@ class CarWorker:
                     price_drops = find_price_drops(current, self.known)
 
                     if new_listings or price_drops:
-                        await application.bot.send_message(
-                            chat_id=chat_id,
-                            text=format_car_alert_html(
-                                self.language,
-                                self.info,
-                                new_listings,
-                                price_drops,
-                            ),
-                            disable_web_page_preview=True,
-                        )
+                        if not await send_car_alert_widget(
+                            application,
+                            chat_id,
+                            self.language,
+                            self.info,
+                            new_listings,
+                            price_drops,
+                        ):
+                            await application.bot.send_message(
+                                chat_id=chat_id,
+                                text=format_car_alert_html(
+                                    self.language,
+                                    self.info,
+                                    new_listings,
+                                    price_drops,
+                                ),
+                                disable_web_page_preview=True,
+                            )
                         logger.info(
                             "Car hits | key=%s | new=%d | drops=%d",
                             self.search_key,
@@ -102,6 +112,7 @@ class CarWorker:
 
                     self.known = {item.listing_id: item.price for item in current}
                     save_car_state(CAR_STATE_FILE, self.search_key, current)
+                    await refresh_status_card(application, chat_id, self.language)
                 except Exception as exc:
                     logger.exception("Car search check failed for %s", self.search_key)
                     try:

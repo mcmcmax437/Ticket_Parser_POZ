@@ -6,6 +6,8 @@ from config import Settings
 from i18n import t
 from qmatic_client import TimeSlot
 
+BOOKING_URL = "https://rezerwacja5.um.poznan.pl/qmaticwebbooking/"
+
 
 def format_new_slots_message(
     settings: Settings,
@@ -34,7 +36,7 @@ def format_new_slots_message(
         [
             "",
             f"{t('notify_booking', lang)}:",
-            "https://rezerwacja5.um.poznan.pl/qmaticwebbooking/",
+            BOOKING_URL,
         ]
     )
 

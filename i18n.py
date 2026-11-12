@@ -192,6 +192,11 @@ TRANSLATIONS: dict[str, dict[Language, str]] = {
     "car_search_not_running": {"en": "Car search is not running.", "uk": "Car search is not running."},
     "car_search_stopped": {"en": "🔴 <b>Car search stopped</b>", "uk": "🔴 <b>Car search stopped</b>"},
     "car_search_stopped_all": {"en": "⏹ <b>All car searches stopped</b> ({count})", "uk": "⏹ <b>All car searches stopped</b> ({count})"},
+    "widget_more": {"en": "+{count} more", "uk": "+{count} more"},
+    "widget_last_check": {"en": "Last check: {time}", "uk": "Last check: {time}"},
+    "widget_hits": {"en": "{count} hit(s)", "uk": "{count} hit(s)"},
+    "widget_new": {"en": "🆕 New listing", "uk": "🆕 New listing"},
+    "widget_drop": {"en": "💷 Price drop", "uk": "💷 Price drop"},
     "car_search_started": {
         "en": "🟢 <b>Car search started</b>\n\n🔍 {filters}\n⏱ {interval}",
         "uk": "🟢 <b>Car search started</b>\n\n🔍 {filters}\n⏱ {interval}",

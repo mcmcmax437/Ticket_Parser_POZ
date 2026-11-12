@@ -20,6 +20,7 @@ from car_monitor import CAR_STATE_FILE, load_car_state, save_car_state
 from car_session import CarManager, get_car_manager
 from search_session import SearchManager, get_search_manager, SLOT_CONFIRMATIONS_KEY
 from services import SERVICE_ORDER
+from widget_sender import refresh_status_card
 from ui_format import (
     case_button_label,
     format_date_range,
@@ -548,6 +549,8 @@ async def _refresh_panel_from_update(update: Update, context: ContextTypes.DEFAU
     chat = update.effective_chat
     if chat is None:
         return
+
+    await refresh_status_card(context.application, chat.id, _lang())
 
     if update.callback_query and update.callback_query.message:
         lang = _lang()

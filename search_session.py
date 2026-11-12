@@ -20,6 +20,7 @@ from monitor import find_new_slots, load_state, save_state, slot_key
 from qmatic_client import QmaticClient
 from search_log import log_search_result
 from telegram_notifier import format_new_slots_message
+from widget_sender import refresh_status_card, send_ticket_alert_widget
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,6 @@ async def notify_new_slots_with_confirm(
     new_slots: list,
 ) -> None:
     lang = settings.language
-    text = format_new_slots_message(settings, new_slots, include_continue_hint=True)
     confirm_id = _store_slot_notification(application, search_key, new_slots)
 
     keyboard = InlineKeyboardMarkup(
@@ -59,9 +59,12 @@ async def notify_new_slots_with_confirm(
         ]
     )
 
+    if await send_ticket_alert_widget(application, chat_id, lang, settings, new_slots, keyboard):
+        return
+
     await application.bot.send_message(
         chat_id=chat_id,
-        text=text,
+        text=format_new_slots_message(settings, new_slots, include_continue_hint=True),
         reply_markup=keyboard,
         disable_web_page_preview=True,
     )
@@ -150,6 +153,7 @@ class SearchWorker:
 
                     self.known_slots = current_keys
                     save_state(STATE_FILE, current_keys, self.search_key)
+                    await refresh_status_card(application, chat_id, lang)
                 except Exception as exc:
                     logger.exception("Search check failed for %s", self.search_key)
                     try:

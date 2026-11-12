@@ -99,6 +99,17 @@ State is kept in `car_state.json`, one entry per filter combination. Several car
 
 Limits: the scraper reads at most **8 pages** (33 listings each) per check, sorted by `created_at:desc`. Make and model are checked against the listing URL slug — otomoto silently falls back to other makes/models when a slug does not exist, so a bogus model returns 0 listings. A bogus region slug is silently ignored by the site and cannot be detected.
 
+## Telegram widgets (Bot API 10.4)
+
+Alerts and a live status card are drawn as [HTML widgets](https://core.telegram.org/bots/widgets) instead of plain text.
+
+- **Alert widgets** — one per hit: `🚌 New free slots` and `🚗 Car hits`. Data is baked into the widget, it does not change after sending. Listing links are in the caption, so they stay clickable.
+- **Status card** — a single widget message that shows what is running now (badge + one line per active search, cap 6 then `+N more`, plus the last check time). The bot writes its state with `editMessageWidgetData` only when the drawn state actually changed; the card is created on the first change and redrawn to the idle badge when everything stops.
+
+If a widget does not fit the API limits (`html` ≤ 32768 bytes and ≤ 4096 bytes compressed with zlib, `chat_data` ≤ 1024 bytes) or the call fails, the bot falls back to the normal text alert.
+
+python-telegram-bot 22.8 covers Bot API 10.0 only, so widgets are sent with raw `do_api_request` calls (`sendWidget`, `editMessageWidgetData`). In production Telegram allows widgets only in the private chat with the bot; groups and inline mode work on the test server only.
+
 ## Notes
 
 - Search runs only while **Start search** is active
