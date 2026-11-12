@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from telegram import Application
+from telegram.ext import Application
 
 from car_config import car_search_info, car_search_key_from_config, car_search_params_from_config
 from car_monitor import CAR_STATE_FILE, find_new_listings, find_price_drops, load_car_state, save_car_state
