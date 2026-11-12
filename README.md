@@ -76,6 +76,29 @@ mkdir -p ~/ticket-parser
 
 Put `.env` in that directory (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`). Deploys leave `.env`, `user_config.json`, and `state.json` in place. Each restart brings the bot back and sends the menu. An in-progress search does not resume; press **Start search** again.
 
+## Car search (otomoto.pl)
+
+Separate section in the bot menu (`🚗 Car search`). It watches otomoto.pl and notifies about:
+
+- **new listings** matching your filters
+- **price drops** on listings you have already seen
+
+Filters: make, model, region/city, year range, price range, max mileage, fuel type, gearbox, check interval (default 15 min).
+
+Values are otomoto.pl URL slugs, lowercase, hyphens:
+
+| Filter | Example |
+|--------|---------|
+| Make | `volkswagen` |
+| Model | `golf`, `seria-3` |
+| Region / city | `mazowieckie`, `warszawa` |
+| Fuel | petrol · diesel · hybrid · hybrid (plug-in) · electric · petrol+LPG |
+| Gearbox | manual · automatic |
+
+State is kept in `car_state.json`, one entry per filter combination. Several car searches can run at once (start one, change filters, start another). **🔄 Clear tracked listings** forgets what was seen, so the next check reports everything as new.
+
+Limits: the scraper reads at most **8 pages** (33 listings each) per check, sorted by `created_at:desc`. Make and model are checked against the listing URL slug — otomoto silently falls back to other makes/models when a slug does not exist, so a bogus model returns 0 listings. A bogus region slug is silently ignored by the site and cannot be detected.
+
 ## Notes
 
 - Search runs only while **Start search** is active

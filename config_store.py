@@ -25,6 +25,17 @@ DEFAULT_USER_CONFIG: dict[str, Any] = {
     "branch_id": "82431f5aac5af7c75a3be70c3de3d449396d10d39a51f95899011243f7a23097",
     "service_key": "annotations",
     "language": "en",
+    "car_make": "",
+    "car_model": "",
+    "car_region": "",
+    "car_year_from": "",
+    "car_year_to": "",
+    "car_price_from": "",
+    "car_price_to": "",
+    "car_mileage_to": "",
+    "car_fuel_type": "",
+    "car_gearbox": "",
+    "car_poll_interval_seconds": 900,
 }
 
 
@@ -38,6 +49,7 @@ def _env_fallback(key: str, default: Any) -> Any:
         "branch_id": ("BRANCH_ID", str),
         "service_key": ("SERVICE_KEY", str),
         "language": ("LANGUAGE", str),
+        "car_poll_interval_seconds": ("CAR_POLL_INTERVAL_SECONDS", int),
     }
     if key not in mapping:
         return default

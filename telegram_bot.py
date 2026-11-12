@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Update
@@ -14,6 +15,9 @@ from monitor import load_state, save_state
 from qmatic_client import QmaticClient, TimeSlot
 from search_log import log_search_result
 from search_config import search_state_key_from_config
+from car_config import car_search_info, car_search_key_from_config
+from car_monitor import CAR_STATE_FILE, load_car_state, save_car_state
+from car_session import CarManager, get_car_manager
 from search_session import SearchManager, get_search_manager, SLOT_CONFIRMATIONS_KEY
 from services import SERVICE_ORDER
 from ui_format import (
@@ -23,6 +27,10 @@ from ui_format import (
     main_menu_html,
     service_button_label,
     settings_html,
+    car_menu_html,
+    car_search_line,
+    FUEL_LABELS,
+    GEARBOX_LABELS,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +42,35 @@ DATE_PROMPT_MESSAGE_ID = "date_prompt_message_id"
 DATE_PROMPT_SETTINGS_VIEW = "date_prompt_settings_view"
 PANEL_MESSAGE_ID = "panel_message_id"
 KEYBOARD_SENT = "keyboard_sent"
+
+AWAITING_CAR_FIELD = "awaiting_car_field"
+CAR_PROMPT_MESSAGE_ID = "car_prompt_message_id"
+
+CAR_SLUG_FIELDS = ("car_make", "car_model", "car_region")
+CAR_INT_FIELDS = ("car_year_from", "car_year_to", "car_price_from", "car_price_to", "car_mileage_to")
+
+CAR_PROMPT_KEYS = {
+    "car_make": "prompt_car_make",
+    "car_model": "prompt_car_model",
+    "car_region": "prompt_car_region",
+    "car_year_from": "prompt_car_year_from",
+    "car_year_to": "prompt_car_year_to",
+    "car_price_from": "prompt_car_price_from",
+    "car_price_to": "prompt_car_price_to",
+    "car_mileage_to": "prompt_car_mileage_to",
+    "car_poll_interval_seconds": "prompt_car_poll_interval_seconds",
+}
+
+CAR_VALUE_BUTTON_KEYS = {
+    "car_make": "btn_car_make",
+    "car_model": "btn_car_model",
+    "car_region": "btn_car_region",
+    "car_year_from": "btn_car_year_from",
+    "car_year_to": "btn_car_year_to",
+    "car_price_from": "btn_car_price_from",
+    "car_price_to": "btn_car_price_to",
+    "car_mileage_to": "btn_car_mileage_to",
+}
 
 
 def _lang() -> Language:
@@ -59,6 +96,10 @@ def _reply_keyboard(lang: Language) -> ReplyKeyboardMarkup:
             [
                 KeyboardButton(t("btn_show_panel", lang)),
                 KeyboardButton(t("btn_settings", lang)),
+            ],
+            [
+                KeyboardButton(t("btn_car_menu", lang)),
+                KeyboardButton(t("btn_car_status", lang)),
             ],
         ],
         resize_keyboard=True,
@@ -112,7 +153,10 @@ def _inline_menu_keyboard(lang: Language, manager: SearchManager) -> InlineKeybo
                     callback_data="prompt:until",
                 ),
             ],
-            [InlineKeyboardButton(t("btn_status", lang), callback_data="action:status")],
+            [
+                InlineKeyboardButton(t("btn_status", lang), callback_data="action:status"),
+                InlineKeyboardButton(t("btn_car_menu", lang), callback_data="menu:car"),
+            ],
             _case_row(lang, selected_cases),
             [
                 InlineKeyboardButton(t("btn_show_panel", lang), callback_data="action:show_panel"),
@@ -168,9 +212,287 @@ def _settings_keyboard(lang: Language, manager: SearchManager) -> InlineKeyboard
             [
                 InlineKeyboardButton(t("btn_show_panel", lang), callback_data="action:show_panel"),
                 InlineKeyboardButton(t("btn_main_menu", lang), callback_data="menu:main"),
+                InlineKeyboardButton(t("btn_car_menu", lang), callback_data="menu:car"),
             ],
         ]
     )
+
+
+def _car_manager(application: Application) -> CarManager:
+    return get_car_manager(application)
+
+
+def _car_value_button(lang: Language, field: str, config: dict) -> InlineKeyboardButton:
+    raw = str(config.get(field) or "").strip()
+    label = t(CAR_VALUE_BUTTON_KEYS[field], lang, value=raw or "—")
+    return InlineKeyboardButton(label, callback_data=f"prompt:{field}")
+
+
+def _car_choice_row(lang: Language, labels: dict[str, str], selected: str, key: str) -> list[InlineKeyboardButton]:
+    buttons = [
+        InlineKeyboardButton(
+            ("● " if selected == value else "○ ") + label,
+            callback_data=f"set:{key}:{value}",
+        )
+        for value, label in labels.items()
+    ]
+    buttons.append(
+        InlineKeyboardButton(
+            ("● " if not selected else "○ ") + t("btn_car_any", lang),
+            callback_data=f"set:{key}:",
+        )
+    )
+    return buttons
+
+
+def _car_keyboard(lang: Language, manager, config: dict) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(t("btn_car_start", lang), callback_data="action:start_car"),
+                InlineKeyboardButton(t("btn_car_stop", lang), callback_data="action:stop_car"),
+            ],
+            [
+                _car_value_button(lang, "car_make", config),
+                _car_value_button(lang, "car_model", config),
+            ],
+            [
+                _car_value_button(lang, "car_year_from", config),
+                _car_value_button(lang, "car_year_to", config),
+            ],
+            [
+                _car_value_button(lang, "car_price_from", config),
+                _car_value_button(lang, "car_price_to", config),
+            ],
+            [
+                _car_value_button(lang, "car_mileage_to", config),
+                _car_value_button(lang, "car_region", config),
+            ],
+            _car_choice_row(lang, FUEL_LABELS, str(config.get("car_fuel_type") or ""), "car_fuel"),
+            _car_choice_row(lang, GEARBOX_LABELS, str(config.get("car_gearbox") or ""), "car_gearbox"),
+            [
+                InlineKeyboardButton(
+                    t("btn_car_interval", lang, interval=format_interval(int(config["car_poll_interval_seconds"]))),
+                    callback_data="prompt:car_poll_interval_seconds",
+                )
+            ],
+            [
+                InlineKeyboardButton(t("btn_car_status", lang), callback_data="action:car_status"),
+                InlineKeyboardButton(t("btn_car_reset", lang), callback_data="action:car_reset"),
+            ],
+            [
+                InlineKeyboardButton(t("btn_car_main_menu", lang), callback_data="menu:main"),
+                InlineKeyboardButton(t("btn_settings", lang), callback_data="menu:settings"),
+            ],
+        ]
+    )
+
+
+def _car_content(application: Application, lang: Language) -> tuple[str, InlineKeyboardMarkup]:
+    manager = _car_manager(application)
+    config = load_user_config()
+    return car_menu_html(lang, manager.list_active()), _car_keyboard(lang, manager, config)
+
+
+async def _refresh_car_panel(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+) -> None:
+    lang = _lang()
+    text, keyboard = _car_content(context.application, lang)
+    if not await _update_panel(context, chat_id, text, keyboard):
+        await _send_panel(context, chat_id, text, keyboard)
+
+
+def _is_car_message(query) -> bool:
+    markup = query.message.reply_markup if query.message else None
+    if not markup or not markup.inline_keyboard:
+        return False
+    for row in markup.inline_keyboard:
+        for btn in row:
+            if btn.callback_data and (
+                btn.callback_data.startswith("prompt:car") or btn.callback_data.startswith("set:car")
+            ):
+                return True
+    return False
+
+
+async def _prompt_for_car_value(
+    query,
+    context: ContextTypes.DEFAULT_TYPE,
+    lang: Language,
+    field: str,
+) -> None:
+    if query.message:
+        _remember_panel(context, query.message.message_id)
+
+    chat_id = query.message.chat_id if query.message else None
+    if chat_id is None:
+        return
+
+    await _delete_message_safe(context, chat_id, context.user_data.get(CAR_PROMPT_MESSAGE_ID))
+
+    prompt = await context.bot.send_message(
+        chat_id=chat_id,
+        text=t(CAR_PROMPT_KEYS[field], lang),
+        parse_mode=PARSE_MODE,
+    )
+
+    context.user_data[AWAITING_CAR_FIELD] = field
+    context.user_data[CAR_PROMPT_MESSAGE_ID] = prompt.message_id
+
+
+async def _apply_car_value(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    raw: str,
+    lang: Language,
+) -> bool:
+    field = str(context.user_data.get(AWAITING_CAR_FIELD) or "")
+    value = raw.strip()
+
+    if field in CAR_SLUG_FIELDS:
+        slug = re.sub(r"[\s_]+", "-", value).strip("-").lower()
+        if slug and not re.fullmatch(r"[a-z0-9-]+", slug):
+            return False
+        stored = slug
+    elif field in CAR_INT_FIELDS:
+        digits = re.sub(r"[^\d]", "", value)
+        if not digits:
+            stored = ""
+        elif field.startswith("car_year") and not 1900 <= int(digits) <= 2100:
+            return False
+        else:
+            stored = str(int(digits))
+    elif field == "car_poll_interval_seconds":
+        digits = re.sub(r"[^\d]", "", value)
+        if not digits:
+            return False
+        stored = str(max(60, min(int(digits), 86400)))
+    else:
+        return False
+
+    update_user_config(**{field: stored})
+    context.user_data.pop(AWAITING_CAR_FIELD, None)
+    await _delete_message_safe(context, chat_id, context.user_data.pop(CAR_PROMPT_MESSAGE_ID, None))
+
+    manager = _car_manager(context.application)
+    text = car_menu_html(lang, manager.list_active())
+    keyboard = _car_keyboard(lang, manager, load_user_config())
+    if not await _update_panel(context, chat_id, text, keyboard):
+        await _send_panel(context, chat_id, text, keyboard)
+    return True
+
+
+async def _start_car_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang = _lang()
+    manager = _car_manager(context.application)
+    config = load_user_config()
+
+    if not str(config.get("car_make") or "").strip():
+        message = t("car_make_required", lang)
+        if update.callback_query:
+            await update.callback_query.answer(message, show_alert=True)
+        else:
+            await _reply(update, context, message)
+        return
+
+    key = car_search_key_from_config(config)
+    if manager.is_running(key):
+        message = t("car_search_already_running", lang)
+        if update.callback_query:
+            await update.callback_query.answer(message)
+        else:
+            await _reply(update, context, message)
+        return
+
+    chat = update.effective_chat
+    if chat is None:
+        return
+
+    await manager.start_config(config, context.application, chat.id)
+
+    if update.callback_query:
+        try:
+            await update.callback_query.answer("✅")
+        except BadRequest:
+            pass
+    else:
+        await _reply(
+            update,
+            context,
+            t(
+                "car_search_started",
+                lang,
+                filters=car_search_line(lang, car_search_info(config, key)),
+                interval=format_interval(int(config["car_poll_interval_seconds"])),
+            ),
+        )
+
+    await _refresh_panel_from_update(update, context)
+
+
+async def _stop_car_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang = _lang()
+    manager = _car_manager(context.application)
+
+    if not await manager.stop_config(load_user_config()):
+        message = t("car_search_not_running", lang)
+        if update.callback_query:
+            await update.callback_query.answer(message, show_alert=True)
+        else:
+            await _reply(update, context, message)
+        return
+
+    if update.callback_query:
+        try:
+            await update.callback_query.answer(t("car_search_stopped", lang))
+        except BadRequest:
+            pass
+    else:
+        await _reply(update, context, t("car_search_stopped", lang))
+
+    await _refresh_panel_from_update(update, context)
+
+
+async def _stop_all_cars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang = _lang()
+    manager = _car_manager(context.application)
+    count = await manager.stop_all()
+    message = t("car_search_stopped_all", lang, count=count) if count else t("car_search_not_running", lang)
+    if update.callback_query:
+        await update.callback_query.answer(message, show_alert=count == 0)
+    else:
+        await _reply(update, context, message)
+
+    await _refresh_panel_from_update(update, context)
+
+
+async def _show_car_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang = _lang()
+    manager = _car_manager(context.application)
+    config = load_user_config()
+    key = car_search_key_from_config(config)
+    known = load_car_state(CAR_STATE_FILE, key)
+    active = manager.is_running(key)
+    badge = t("menu_status_searching", lang) if active else t("menu_status_idle", lang)
+
+    lines = [
+        f"{t('car_status_title', lang)}",
+        t("divider", lang),
+        "",
+        f"🔹 {badge}",
+        f"🔹 {car_search_line(lang, car_search_info(config, key))}",
+        f"🔹 {t('status_known', lang, count=len(known))}",
+    ]
+    for item in manager.list_active():
+        lines.append(f"🔹 {car_search_line(lang, item)}")
+
+    text = "\n".join(lines)
+    if update.callback_query:
+        await update.callback_query.message.reply_text(text, parse_mode=PARSE_MODE)
+    elif update.message:
+        await update.message.reply_text(text, parse_mode=PARSE_MODE, reply_markup=_reply_keyboard(lang))
 
 
 def _format_slots(slots: list[TimeSlot], lang: Language, limit: int = 25) -> str:
@@ -366,6 +688,29 @@ async def _show_monitor_panel(
             pass
 
 
+async def _show_car_panel(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    chat = update.effective_chat
+    if chat is None:
+        return
+
+    lang = _lang()
+    car_manager = _car_manager(context.application)
+    text = car_menu_html(lang, car_manager.list_active())
+    keyboard = _car_keyboard(lang, car_manager, load_user_config())
+
+    await _force_send_panel(context, chat.id, text, keyboard)
+    await _ensure_reply_keyboard(context, chat.id, lang)
+
+    if update.callback_query:
+        try:
+            await update.callback_query.answer(t("panel_resent", lang))
+        except BadRequest:
+            pass
+
+
 async def _delete_message_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int | None) -> None:
     if message_id is None:
         return
@@ -533,6 +878,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await start_command(update, context)
+
+
+async def car_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    settings = load_settings()
+    if not _authorized(update, settings):
+        return
+    await _show_car_panel(update, context)
 
 
 async def settings_command(
@@ -817,6 +1169,57 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await _prompt_for_date(query, context, lang, settings_view=settings_view, field=field)
         return
 
+    if data == "menu:car":
+        await query.answer()
+        if query.message:
+            _remember_panel(context, query.message.message_id)
+        car_manager = _car_manager(context.application)
+        try:
+            await query.edit_message_text(
+                car_menu_html(lang, car_manager.list_active()),
+                reply_markup=_car_keyboard(lang, car_manager, load_user_config()),
+                parse_mode=PARSE_MODE,
+            )
+        except BadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                logger.warning("Could not open car section: %s", exc)
+        return
+
+    if data.startswith("prompt:car"):
+        await query.answer()
+        await _prompt_for_car_value(query, context, lang, data.split(":", 1)[1])
+        return
+
+    if data == "action:start_car":
+        await _start_car_search(update, context)
+        return
+
+    if data == "action:stop_car":
+        await _stop_car_search(update, context)
+        return
+
+    if data == "action:stop_all_cars":
+        await _stop_all_cars(update, context)
+        return
+
+    if data == "action:car_status":
+        await _show_car_status(update, context)
+        return
+
+    if data == "action:car_reset":
+        save_car_state(CAR_STATE_FILE, car_search_key_from_config(load_user_config()), [])
+        await query.answer(t("car_reset_done", lang))
+        if query.message:
+            await _refresh_car_panel(context, query.message.chat_id)
+        return
+
+    if data.startswith("set:car_fuel:") or data.startswith("set:car_gearbox:"):
+        field = "car_fuel_type" if data.startswith("set:car_fuel:") else "car_gearbox"
+        update_user_config(**{field: data.rsplit(":", 1)[1]})
+        if query.message:
+            await _refresh_car_panel(context, query.message.chat_id)
+        return
+
     if data == "action:start_search":
         await _start_search(update, context)
         return
@@ -924,6 +1327,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await update.message.reply_text(t("invalid_date_range", lang), parse_mode=PARSE_MODE)
         return
 
+    if context.user_data.get(AWAITING_CAR_FIELD):
+        chat = update.effective_chat
+        if chat is None:
+            return
+        applied = await _apply_car_value(context, chat.id, text, lang)
+        if not applied:
+            await update.message.reply_text(t("invalid_car_value", lang), parse_mode=PARSE_MODE)
+        return
+
     if text in button_texts("btn_start_search"):
         await _start_search(update, context)
         return
@@ -940,6 +1352,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await settings_command(update, context, force_new=True)
         return
 
+    if text in button_texts("btn_car_menu"):
+        await _show_car_panel(update, context)
+        return
+
+    if text in button_texts("btn_car_status"):
+        await _show_car_status(update, context)
+        return
+
 
 async def _set_bot_commands(application: Application) -> None:
     lang = _lang()
@@ -950,6 +1370,7 @@ async def _set_bot_commands(application: Application) -> None:
             BotCommand("monitor", t("cmd_monitor", lang)),
             BotCommand("stop", t("cmd_stop", lang)),
             BotCommand("settings", t("cmd_settings", lang)),
+            BotCommand("car", t("cmd_car", lang)),
         ]
     )
 
@@ -993,6 +1414,7 @@ def build_application(token: str) -> Application:
     application.add_handler(CommandHandler("monitor", monitor_command))
     application.add_handler(CommandHandler("settings", settings_command))
     application.add_handler(CommandHandler("stop", stop_command))
+    application.add_handler(CommandHandler("car", car_command))
     application.add_handler(CallbackQueryHandler(callback_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     return application
