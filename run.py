@@ -18,7 +18,7 @@ def main() -> None:
     settings = load_settings()
     application = build_application(settings.telegram_bot_token)
     logger.info("Telegram bot started")
-    application.run_polling(allowed_updates=["message", "callback_query"])
+    application.run_polling(allowed_updates=["message", "callback_query", "widget_query"])
 
 
 if __name__ == "__main__":

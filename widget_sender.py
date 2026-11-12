@@ -9,6 +9,7 @@ from telegram.ext import Application
 
 from i18n import Language
 from ui_format import (
+    PANEL_WIDGET_HTML,
     STATUS_WIDGET_HTML,
     car_alert_caption,
     car_alert_widget_html,
@@ -26,6 +27,8 @@ WIDGET_HTML_COMPRESSED_LIMIT = 4096
 
 CARD_MESSAGE_ID = "status_card_message_id"
 CARD_DRAWN_STATE = "status_card_drawn_state"
+TICKET_PANEL_ID = "ticket_panel_widget_id"
+CAR_PANEL_ID = "car_panel_widget_id"
 
 
 def _widget_fits(html_text: str) -> bool:
@@ -141,6 +144,82 @@ async def _send_status_card(
         logger.warning("sendWidget (status card) failed | %s", exc)
         return None
     return message["message_id"]
+
+
+def _unchanged(exc: Exception) -> bool:
+    return "not modified" in str(exc).lower()
+
+
+async def _edit_interactive_widget(
+    application: Application,
+    chat_id: int,
+    message_id: int,
+    state: str,
+    reply_markup,
+) -> bool:
+    try:
+        await application.bot.do_api_request(
+            "editMessageWidgetData",
+            {"chat_id": chat_id, "message_id": message_id, "chat_data": state},
+        )
+    except Exception as exc:
+        if not _unchanged(exc):
+            logger.warning("editMessageWidgetData (panel) failed | %s", exc)
+            return False
+    if reply_markup is None:
+        return True
+    try:
+        await application.bot.do_api_request(
+            "editMessageReplyMarkup",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "reply_markup": reply_markup.to_dict(),
+            },
+        )
+    except Exception as exc:
+        if not _unchanged(exc):
+            logger.warning("editMessageReplyMarkup (panel) failed | %s", exc)
+    return True
+
+
+async def upsert_panel_widget(
+    application: Application,
+    chat_id: int,
+    storage_key: str,
+    state: str,
+    caption: str,
+    reply_markup,
+) -> int | None:
+    """Sends or redraws an interactive menu widget. The HTML stays fixed; only chat_data changes."""
+    if not _widget_fits(PANEL_WIDGET_HTML):
+        return None
+    chat_data = application.chat_data[chat_id]
+    message_id = chat_data.get(storage_key)
+    if message_id is not None and await _edit_interactive_widget(
+        application, chat_id, message_id, state, reply_markup
+    ):
+        return message_id
+
+    try:
+        message = await application.bot.do_api_request(
+            "sendWidget",
+            {
+                "chat_id": chat_id,
+                "html": PANEL_WIDGET_HTML,
+                "chat_data": state,
+                "caption": caption,
+                "parse_mode": "HTML",
+                "allow_queries": True,
+                "reply_markup": reply_markup.to_dict() if reply_markup is not None else None,
+            },
+        )
+    except Exception as exc:
+        logger.warning("sendWidget (panel) failed | %s", exc)
+        return None
+    message_id = message["message_id"]
+    chat_data[storage_key] = message_id
+    return message_id
 
 
 async def refresh_status_card(application: Application, chat_id: int, lang: Language) -> None:

@@ -6,7 +6,15 @@ from datetime import date
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.error import BadRequest
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    Application,
+    BaseHandler,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 from config import STATE_FILE, Settings, load_settings
 from config_store import format_interval, load_user_config, update_user_config
@@ -20,18 +28,21 @@ from car_monitor import CAR_STATE_FILE, load_car_state, save_car_state
 from car_session import CarManager, get_car_manager
 from search_session import SearchManager, get_search_manager, SLOT_CONFIRMATIONS_KEY
 from services import SERVICE_ORDER
-from widget_sender import refresh_status_card
+from widget_sender import CAR_PANEL_ID, TICKET_PANEL_ID, refresh_status_card, upsert_panel_widget
 from ui_format import (
+    FUEL_LABELS,
+    GEARBOX_LABELS,
+    car_filter_summary,
+    car_menu_html,
+    car_panel_state,
+    car_search_line,
     case_button_label,
     format_date_range,
     interval_button_label,
     main_menu_html,
     service_button_label,
     settings_html,
-    car_menu_html,
-    car_search_line,
-    FUEL_LABELS,
-    GEARBOX_LABELS,
+    ticket_panel_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,12 +152,9 @@ def _search_control_rows(lang: Language, manager: SearchManager) -> list[list[In
 
 def _inline_menu_keyboard(lang: Language, manager: SearchManager) -> InlineKeyboardMarkup:
     config = load_user_config()
-    selected_cases = int(config["num_cases"])
-    selected_service = str(config["service_key"])
     return InlineKeyboardMarkup(
         [
             *_search_control_rows(lang, manager),
-            *_service_rows(lang, selected_service),
             [
                 _from_date_button(lang, config),
                 InlineKeyboardButton(
@@ -158,7 +166,6 @@ def _inline_menu_keyboard(lang: Language, manager: SearchManager) -> InlineKeybo
                 InlineKeyboardButton(t("btn_status", lang), callback_data="action:status"),
                 InlineKeyboardButton(t("btn_car_menu", lang), callback_data="menu:car"),
             ],
-            _case_row(lang, selected_cases),
             [
                 InlineKeyboardButton(t("btn_show_panel", lang), callback_data="action:show_panel"),
                 InlineKeyboardButton(t("btn_settings", lang), callback_data="menu:settings"),
@@ -229,23 +236,6 @@ def _car_value_button(lang: Language, field: str, config: dict) -> InlineKeyboar
     return InlineKeyboardButton(label, callback_data=f"prompt:{field}")
 
 
-def _car_choice_row(lang: Language, labels: dict[str, str], selected: str, key: str) -> list[InlineKeyboardButton]:
-    buttons = [
-        InlineKeyboardButton(
-            ("● " if selected == value else "○ ") + label,
-            callback_data=f"set:{key}:{value}",
-        )
-        for value, label in labels.items()
-    ]
-    buttons.append(
-        InlineKeyboardButton(
-            ("● " if not selected else "○ ") + t("btn_car_any", lang),
-            callback_data=f"set:{key}:",
-        )
-    )
-    return buttons
-
-
 def _car_keyboard(lang: Language, manager, config: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
@@ -269,8 +259,6 @@ def _car_keyboard(lang: Language, manager, config: dict) -> InlineKeyboardMarkup
                 _car_value_button(lang, "car_mileage_to", config),
                 _car_value_button(lang, "car_region", config),
             ],
-            _car_choice_row(lang, FUEL_LABELS, str(config.get("car_fuel_type") or ""), "car_fuel"),
-            _car_choice_row(lang, GEARBOX_LABELS, str(config.get("car_gearbox") or ""), "car_gearbox"),
             [
                 InlineKeyboardButton(
                     t("btn_car_interval", lang, interval=format_interval(int(config["car_poll_interval_seconds"]))),
@@ -295,14 +283,45 @@ def _car_content(application: Application, lang: Language) -> tuple[str, InlineK
     return car_menu_html(lang, manager.list_active()), _car_keyboard(lang, manager, config)
 
 
+async def present_ticket(application: Application, chat_id: int) -> None:
+    lang = _lang()
+    manager = _manager(application)
+    active = manager.list_active()
+    settings = load_settings()
+    caption = (
+        f"{settings.service_name} · "
+        f"{format_date_range(load_user_config().get('notify_from_date'), load_user_config()['notify_before_date'])}"
+    )
+    await upsert_panel_widget(
+        application,
+        chat_id,
+        TICKET_PANEL_ID,
+        ticket_panel_state(lang, settings.service_name, active),
+        caption,
+        _inline_menu_keyboard(lang, manager),
+    )
+
+
+async def present_car(application: Application, chat_id: int) -> None:
+    lang = _lang()
+    manager = _car_manager(application)
+    active = manager.list_active()
+    info = car_search_info(load_user_config(), car_search_key_from_config(load_user_config()))
+    await upsert_panel_widget(
+        application,
+        chat_id,
+        CAR_PANEL_ID,
+        car_panel_state(lang, active),
+        car_filter_summary(lang, info),
+        _car_keyboard(lang, manager, load_user_config()),
+    )
+
+
 async def _refresh_car_panel(
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
 ) -> None:
-    lang = _lang()
-    text, keyboard = _car_content(context.application, lang)
-    if not await _update_panel(context, chat_id, text, keyboard):
-        await _send_panel(context, chat_id, text, keyboard)
+    await present_car(context.application, chat_id)
 
 
 def _is_car_message(query) -> bool:
@@ -515,14 +534,6 @@ def _format_slots(slots: list[TimeSlot], lang: Language, limit: int = 25) -> str
     return "\n".join(lines)
 
 
-def _menu_content(application: Application, lang: Language) -> tuple[str, InlineKeyboardMarkup]:
-    manager = _manager(application)
-    active = manager.list_active()
-    settings = load_settings()
-    text = main_menu_html(lang, settings.service_name, active)
-    return text, _inline_menu_keyboard(lang, manager)
-
-
 async def _refresh_panel(
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
@@ -537,12 +548,11 @@ async def _refresh_panel(
     if settings_view:
         text = settings_html(lang, settings.service_name, active)
         keyboard = _settings_keyboard(lang, manager)
-    else:
-        text = main_menu_html(lang, settings.service_name, active)
-        keyboard = _inline_menu_keyboard(lang, manager)
+        if not await _update_panel(context, chat_id, text, keyboard):
+            await _send_panel(context, chat_id, text, keyboard)
+        return
 
-    if not await _update_panel(context, chat_id, text, keyboard):
-        await _send_panel(context, chat_id, text, keyboard)
+    await present_ticket(context.application, chat_id)
 
 
 async def _refresh_panel_from_update(update: Update, context: ContextTypes.DEFAULT_TYPE, *, settings_view: bool = False) -> None:
@@ -552,17 +562,13 @@ async def _refresh_panel_from_update(update: Update, context: ContextTypes.DEFAU
 
     await refresh_status_card(context.application, chat.id, _lang())
 
-    if update.callback_query and update.callback_query.message:
+    if settings_view and update.callback_query and update.callback_query.message:
         lang = _lang()
         manager = _manager(context.application)
         active = manager.list_active()
         settings = load_settings()
-        if settings_view:
-            text = settings_html(lang, settings.service_name, active)
-            keyboard = _settings_keyboard(lang, manager)
-        else:
-            text = main_menu_html(lang, settings.service_name, active)
-            keyboard = _inline_menu_keyboard(lang, manager)
+        text = settings_html(lang, settings.service_name, active)
+        keyboard = _settings_keyboard(lang, manager)
         _remember_panel(context, update.callback_query.message.message_id)
         try:
             await update.callback_query.edit_message_text(
@@ -571,6 +577,10 @@ async def _refresh_panel_from_update(update: Update, context: ContextTypes.DEFAU
         except BadRequest as exc:
             if "message is not modified" not in str(exc).lower():
                 logger.warning("Could not refresh panel: %s", exc)
+        return
+
+    if not settings_view:
+        await present_ticket(context.application, chat.id)
         return
 
     await _refresh_panel(context, chat.id, settings_view=settings_view)
@@ -677,11 +687,9 @@ async def _show_monitor_panel(
     if settings_view:
         text = settings_html(lang, settings.service_name, active)
         keyboard = _settings_keyboard(lang, manager)
+        await _force_send_panel(context, chat.id, text, keyboard)
     else:
-        text = main_menu_html(lang, settings.service_name, active)
-        keyboard = _inline_menu_keyboard(lang, manager)
-
-    await _force_send_panel(context, chat.id, text, keyboard)
+        await present_ticket(context.application, chat.id)
     await _ensure_reply_keyboard(context, chat.id, lang)
 
     if update.callback_query:
@@ -700,11 +708,7 @@ async def _show_car_panel(
         return
 
     lang = _lang()
-    car_manager = _car_manager(context.application)
-    text = car_menu_html(lang, car_manager.list_active())
-    keyboard = _car_keyboard(lang, car_manager, load_user_config())
-
-    await _force_send_panel(context, chat.id, text, keyboard)
+    await present_car(context.application, chat.id)
     await _ensure_reply_keyboard(context, chat.id, lang)
 
     if update.callback_query:
@@ -788,12 +792,10 @@ async def _apply_date_change(
     if settings_view:
         text = settings_html(lang, settings.service_name, active)
         keyboard = _settings_keyboard(lang, manager)
+        if not await _update_panel(context, chat_id, text, keyboard):
+            await _send_panel(context, chat_id, text, keyboard)
     else:
-        text = main_menu_html(lang, settings.service_name, active)
-        keyboard = _inline_menu_keyboard(lang, manager)
-
-    if not await _update_panel(context, chat_id, text, keyboard):
-        await _send_panel(context, chat_id, text, keyboard)
+        await present_ticket(context.application, chat_id)
     return True
 
 
@@ -818,12 +820,14 @@ async def _refresh_inline_menu(
     manager = _manager(context.application)
     active = manager.list_active()
     settings = load_settings()
-    if settings_view:
-        text = settings_html(lang, settings.service_name, active)
-        keyboard = _settings_keyboard(lang, manager)
-    else:
-        text = main_menu_html(lang, settings.service_name, active)
-        keyboard = _inline_menu_keyboard(lang, manager)
+    if not settings_view:
+        chat = query.message.chat if query.message else None
+        if chat is not None:
+            await present_ticket(context.application, chat.id)
+        return
+
+    text = settings_html(lang, settings.service_name, active)
+    keyboard = _settings_keyboard(lang, manager)
 
     if query.message is None:
         return
@@ -843,25 +847,12 @@ async def _send_main_menu(
     *,
     edit: bool = False,
 ) -> None:
-    lang = _lang()
-    text, inline_markup = _menu_content(context.application, lang)
-
-    if edit and update.callback_query and update.callback_query.message:
-        _remember_panel(context, update.callback_query.message.message_id)
-        try:
-            await update.callback_query.edit_message_text(
-                text, parse_mode=PARSE_MODE, reply_markup=inline_markup
-            )
-        except BadRequest as exc:
-            if "message is not modified" not in str(exc).lower():
-                logger.warning("Could not edit main menu: %s", exc)
-        return
-
+    del edit
     chat = update.effective_chat
     if chat is None:
         return
 
-    await _force_send_panel(context, chat.id, text, inline_markup)
+    await present_ticket(context.application, chat.id)
     await _ensure_reply_keyboard(context, chat.id, lang)
 
 
@@ -1174,18 +1165,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     if data == "menu:car":
         await query.answer()
-        if query.message:
-            _remember_panel(context, query.message.message_id)
-        car_manager = _car_manager(context.application)
-        try:
-            await query.edit_message_text(
-                car_menu_html(lang, car_manager.list_active()),
-                reply_markup=_car_keyboard(lang, car_manager, load_user_config()),
-                parse_mode=PARSE_MODE,
-            )
-        except BadRequest as exc:
-            if "message is not modified" not in str(exc).lower():
-                logger.warning("Could not open car section: %s", exc)
+        chat = update.effective_chat
+        if chat is not None:
+            await present_car(context.application, chat.id)
         return
 
     if data.startswith("prompt:car"):
@@ -1258,7 +1240,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.answer()
 
     if data == "menu:main":
-        await _send_main_menu(update, context, edit=True)
+        await query.answer()
+        chat = update.effective_chat
+        if chat is not None:
+            await present_ticket(context.application, chat.id)
         return
 
     if data == "menu:settings":
@@ -1381,21 +1366,78 @@ async def _set_bot_commands(application: Application) -> None:
 async def _send_startup_menu(application: Application) -> None:
     settings = load_settings()
     lang = _lang()
-    manager = get_search_manager(application)
-    text = main_menu_html(lang, settings.service_name, manager.list_active())
-    inline_markup = _inline_menu_keyboard(lang, manager)
-
+    chat_id = int(settings.telegram_chat_id)
+    await present_ticket(application, chat_id)
     await application.bot.send_message(
-        chat_id=int(settings.telegram_chat_id),
-        text=text,
-        parse_mode=PARSE_MODE,
-        reply_markup=inline_markup,
-    )
-    await application.bot.send_message(
-        chat_id=int(settings.telegram_chat_id),
+        chat_id=chat_id,
         text=t("main_intro", lang),
         reply_markup=_reply_keyboard(lang),
     )
+
+
+class WidgetQueryHandler(BaseHandler):
+    def check_update(self, update: object):
+        if isinstance(update, Update):
+            return update.api_kwargs.get("widget_query") or None
+        return None
+
+
+async def widget_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    raw = dict(update.api_kwargs.get("widget_query") or {})
+    query_id = raw.get("id")
+    data = str(raw.get("data") or "")
+    chat = raw.get("chat") or {}
+    chat_id = chat.get("id")
+    settings = load_settings()
+
+    async def answer() -> None:
+        if not query_id:
+            return
+        try:
+            await context.bot.do_api_request("answerWidgetQuery", {"widget_query_id": query_id})
+        except Exception:
+            logger.exception("answerWidgetQuery failed")
+
+    if chat_id is None or str(chat_id) != settings.telegram_chat_id:
+        await answer()
+        return
+
+    if data.startswith("f:"):
+        value = data[2:]
+        if value in FUEL_LABELS or value == "":
+            update_user_config(car_fuel_type=value)
+        await answer()
+        await present_car(context.application, chat_id)
+        return
+
+    if data.startswith("g:"):
+        value = data[2:]
+        if value in GEARBOX_LABELS or value == "":
+            update_user_config(car_gearbox=value)
+        await answer()
+        await present_car(context.application, chat_id)
+        return
+
+    if data.startswith("svc:"):
+        service_key = data[4:]
+        if service_key in SERVICE_ORDER:
+            update_user_config(service_key=service_key)
+        await answer()
+        await present_ticket(context.application, chat_id)
+        return
+
+    if data.startswith("n:"):
+        try:
+            num_cases = int(data[2:])
+        except ValueError:
+            num_cases = 0
+        if num_cases in {1, 2, 3}:
+            update_user_config(num_cases=num_cases)
+        await answer()
+        await present_ticket(context.application, chat_id)
+        return
+
+    await answer()
 
 
 def build_application(token: str) -> Application:
@@ -1419,5 +1461,6 @@ def build_application(token: str) -> Application:
     application.add_handler(CommandHandler("stop", stop_command))
     application.add_handler(CommandHandler("car", car_command))
     application.add_handler(CallbackQueryHandler(callback_handler))
+    application.add_handler(WidgetQueryHandler(widget_query_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     return application
