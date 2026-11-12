@@ -9,8 +9,7 @@ from car_config import car_search_info, car_search_key_from_config, car_search_p
 from car_monitor import CAR_STATE_FILE, find_new_listings, find_price_drops, load_car_state, save_car_state
 from i18n import normalize_language, t
 from otomoto_client import OtomotoClient
-from ui_format import format_car_alert_html
-from widget_sender import refresh_status_card, send_car_alert_widget
+from widget_sender import refresh_status_card, send_car_cards
 
 logger = logging.getLogger(__name__)
 
@@ -85,24 +84,13 @@ class CarWorker:
                     price_drops = find_price_drops(current, self.known)
 
                     if new_listings or price_drops:
-                        if not await send_car_alert_widget(
+                        await send_car_cards(
                             application,
                             chat_id,
                             self.language,
-                            self.info,
                             new_listings,
                             price_drops,
-                        ):
-                            await application.bot.send_message(
-                                chat_id=chat_id,
-                                text=format_car_alert_html(
-                                    self.language,
-                                    self.info,
-                                    new_listings,
-                                    price_drops,
-                                ),
-                                disable_web_page_preview=True,
-                            )
+                        )
                         logger.info(
                             "Car hits | key=%s | new=%d | drops=%d",
                             self.search_key,

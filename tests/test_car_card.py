@@ -1,0 +1,79 @@
+import asyncio
+import unittest
+from unittest.mock import patch
+
+from otomoto_client import OtomotoClient
+from ui_format import car_card_caption
+from widget_sender import _send_car_card
+
+FIXTURE = """
+<div data-testid="search-results">
+  <article data-id="615">
+    <a data-nextlink="false" aria-label="Toyota Corolla 1.8 Hybrid"
+       href="https://www.otomoto.pl/osobowe/oferta/toyota-corolla-ID6IiVzi.html">
+      <img src="//ireland.apollo.olxcdn.com/v1/files/abc-OTOMOTOPL/image;s=320x240" />
+    </a>
+    <span translate="no">47 200</span>
+    <dd data-parameter="year">2020</dd>
+    <dd data-parameter="mileage">49 000 km</dd>
+    <dd data-parameter="fuel_type">Hybryda</dd>
+    <dd data-parameter="gearbox">Automatyczna</dd>
+    <p>1798 cm3 • 122 KM</p>
+    <p>Sobków (Świętokrzyskie)</p>
+    <p>Prywatny sprzedawca • Podbite</p>
+  </article>
+</div>
+"""
+
+
+class CarCardTest(unittest.TestCase):
+    def test_card_keeps_the_photo_place_and_facts(self) -> None:
+        item = OtomotoClient().parse_listings(FIXTURE)[0]
+        self.assertEqual(item.title, "Toyota Corolla 1.8 Hybrid")
+        self.assertEqual(item.price, 47200)
+        self.assertEqual(item.year, 2020)
+        self.assertEqual(item.mileage, 49000)
+        self.assertEqual(item.location, "Sobków (Świętokrzyskie)")
+        self.assertEqual(
+            item.image_url,
+            "https://ireland.apollo.olxcdn.com/v1/files/abc-OTOMOTOPL/image;s=800x600",
+        )
+
+    def test_caption_has_info_and_a_link(self) -> None:
+        item = OtomotoClient().parse_listings(FIXTURE)[0]
+        caption = car_card_caption("uk", item)
+        self.assertIn("Toyota Corolla 1.8 Hybrid", caption)
+        self.assertIn("47\u2009200 zł", caption)
+        self.assertIn("2020", caption)
+        self.assertIn("49\u2009000 km", caption)
+        self.assertIn("Hybryda", caption)
+        self.assertIn("Automatyczna", caption)
+        self.assertIn("Sobków (Świętokrzyskie)", caption)
+        self.assertIn("Відкрити оголошення", caption)
+        self.assertIn(item.url, caption)
+        drop = car_card_caption("uk", item, 50000)
+        self.assertIn("50\u2009000 → 47\u2009200 zł", drop)
+
+    def test_photo_is_sent_with_the_caption(self) -> None:
+        item = OtomotoClient().parse_listings(FIXTURE)[0]
+        sent = []
+
+        class Bot:
+            async def send_photo(self, **kwargs):
+                sent.append(kwargs)
+
+            async def send_message(self, **kwargs):
+                raise AssertionError("text fallback")
+
+        class App:
+            bot = Bot()
+
+        with patch("widget_sender._download_photo", return_value=b"jpeg-bytes" * 100):
+            asyncio.run(_send_car_card(App(), 1, car_card_caption("uk", item), item))
+        self.assertEqual(sent[0]["caption"], car_card_caption("uk", item))
+        self.assertEqual(sent[0]["parse_mode"], "HTML")
+        self.assertTrue(sent[0]["photo"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -192,6 +192,32 @@ def _format_active_cars(lang: Language, active_cars: list[CarSearchInfo]) -> str
     return "\n".join(lines)
 
 
+def car_card_caption(lang: Language, item: CarListing, previous: int | None = None) -> str:
+    if previous is not None and item.price is not None:
+        mark = "📉"
+        price = f"{_group(previous)} → {_group(item.price)} zł"
+    else:
+        mark = "🆕"
+        price = f"{_group(item.price)} zł" if item.price is not None else "—"
+    facts = []
+    if item.year:
+        facts.append(str(item.year))
+    if item.mileage:
+        facts.append(f"{_group(item.mileage)} km")
+    if item.fuel_type:
+        facts.append(item.fuel_type)
+    if item.gearbox:
+        facts.append(item.gearbox)
+    lines = [f"{mark} <b>{_esc(item.title)}</b>", f"<b>{_esc(price)}</b>"]
+    if facts:
+        lines.append(_esc(" · ".join(facts)))
+    if item.location:
+        lines.append(_esc(item.location))
+    if item.url:
+        lines.append(f'<a href="{_esc(item.url)}">{t("car_open_listing", lang)}</a>')
+    return "\n".join(lines)
+
+
 def format_car_alert_html(
     lang: Language,
     info: CarSearchInfo,
@@ -205,15 +231,10 @@ def format_car_alert_html(
         "",
     ]
     for item in new_listings:
-        lines.append(f"🆕 <b>{_esc(item.title)}</b>")
-        lines.append(f"   {_esc(_car_details(item))}")
-        lines.append(f"   {item.url}")
+        lines.append(car_card_caption(lang, item))
         lines.append("")
     for item, previous in price_drops:
-        lines.append(f"📉 <b>{_esc(item.title)}</b>")
-        lines.append(f"   {_group(previous)} → {_group(item.price)} zł")
-        lines.append(f"   {_esc(_car_details(item))}")
-        lines.append(f"   {item.url}")
+        lines.append(car_card_caption(lang, item, previous))
         lines.append("")
     return "\n".join(lines).rstrip()
 

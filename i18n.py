@@ -185,6 +185,7 @@ TRANSLATIONS: dict[str, dict[Language, str]] = {
     "badge_car_active": {"en": "🟢 <b>This car search is running</b>", "uk": "🟢 <b>This car search is running</b>"},
     "badge_cars_running": {"en": "🟢 <b>{count} car search(es) running</b>", "uk": "🟢 <b>{count} car search(es) running</b>"},
     "car_alert_title": {"en": "🚗 <b>Car hits!</b>", "uk": "🚗 <b>Car hits!</b>"},
+    "car_open_listing": {"en": "Open the listing", "uk": "Відкрити оголошення"},
     "car_status_title": {"en": "🚗 <b>Car status</b>", "uk": "🚗 <b>Car status</b>"},
     "car_reset_done": {"en": "🔄 Tracked listings cleared.", "uk": "🔄 Tracked listings cleared."},
     "car_make_required": {"en": "Set the car make first.", "uk": "Set the car make first."},
