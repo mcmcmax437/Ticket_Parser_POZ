@@ -41,6 +41,8 @@ class CarListing:
     mileage: int | None
     fuel_type: str
     gearbox: str
+    image_url: str = ""
+    location: str = ""
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,26 @@ class CarSearchParams:
 def _number(text: str) -> int | None:
     digits = re.sub(r"\D", "", text)
     return int(digits) if digits else None
+
+
+def _photo_url(article) -> str:
+    sources = [src.strip() for src in article.xpath(".//img/@src") if src and src.strip()]
+    if not sources:
+        return ""
+    src = sources[0]
+    if src.startswith("//"):
+        src = "https:" + src
+    return re.sub(r";s=\d+x\d+", ";s=800x600", src)
+
+
+def _location(article) -> str:
+    for paragraph in article.xpath(".//p"):
+        text = " ".join(part.strip() for part in paragraph.itertext() if part.strip())
+        if "•" in text or "·" in text:
+            continue
+        if re.fullmatch(r".{2,60} \([^)]{2,40}\)", text):
+            return text
+    return ""
 
 
 def _norm(value: str) -> str:
@@ -190,6 +212,8 @@ class OtomotoClient:
                     mileage=_number(fields.get("mileage", "")),
                     fuel_type=fields.get("fuel_type", ""),
                     gearbox=fields.get("gearbox", ""),
+                    image_url=_photo_url(article),
+                    location=_location(article),
                 )
             )
         return listings

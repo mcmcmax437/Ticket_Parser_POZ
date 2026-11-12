@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
 import zlib
 
+import requests
+from telegram import InputFile
 from telegram.ext import Application
 
 from i18n import Language
@@ -13,6 +16,7 @@ from ui_format import (
     STATUS_WIDGET_HTML,
     car_alert_caption,
     car_alert_widget_html,
+    car_card_caption,
     status_widget_caption,
     status_widget_chat_data,
     ticket_alert_caption,
@@ -80,6 +84,63 @@ async def send_ticket_alert_widget(
         ticket_alert_caption(lang, settings, new_slots),
         reply_markup,
     )
+
+
+def _download_photo(url: str) -> bytes:
+    response = requests.get(
+        url,
+        timeout=20,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
+        },
+    )
+    response.raise_for_status()
+    content_type = response.headers.get("Content-Type", "")
+    if not content_type.startswith("image/") or len(response.content) < 1000:
+        raise ValueError(f"Unexpected photo response {content_type} {len(response.content)}")
+    if len(response.content) > 9_000_000:
+        raise ValueError("Photo is too large")
+    return response.content
+
+
+async def _send_car_card(application: Application, chat_id: int, caption: str, item) -> None:
+    photo = None
+    if item.image_url:
+        try:
+            photo = await asyncio.to_thread(_download_photo, item.image_url)
+        except Exception:
+            logger.warning("Car photo was not downloaded | id=%s", item.listing_id, exc_info=True)
+    if photo:
+        try:
+            await application.bot.send_photo(
+                chat_id=chat_id,
+                photo=InputFile(photo, filename="car.jpg"),
+                caption=caption,
+                parse_mode="HTML",
+            )
+            return
+        except Exception:
+            logger.warning("Car photo was not sent | id=%s", item.listing_id, exc_info=True)
+    await application.bot.send_message(
+        chat_id=chat_id,
+        text=caption,
+        parse_mode="HTML",
+        disable_web_page_preview=False,
+    )
+
+
+async def send_car_cards(application: Application, chat_id: int, lang: Language, new_listings, price_drops) -> None:
+    for item in new_listings:
+        try:
+            await _send_car_card(application, chat_id, car_card_caption(lang, item), item)
+        except Exception:
+            logger.exception("Car card was not sent | id=%s", item.listing_id)
+    for item, previous in price_drops:
+        try:
+            await _send_car_card(application, chat_id, car_card_caption(lang, item, previous), item)
+        except Exception:
+            logger.exception("Car card was not sent | id=%s", item.listing_id)
 
 
 async def send_car_alert_widget(
