@@ -18,6 +18,19 @@
       --ok: #1f8f4e;
       color-scheme: light dark;
     }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0e0e10;
+        --text: #f2f2f7;
+        --hint: #98989f;
+        --card: #1c1c1e;
+        --btn: #2f89ff;
+        --btn-text: #ffffff;
+        --line: rgba(255, 255, 255, 0.12);
+        --danger: #ff6b6b;
+        --ok: #3ddc84;
+      }
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -29,7 +42,7 @@
     header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
     h1 { font-size: 20px; margin: 0; }
     .langs { display: flex; gap: 6px; }
-    .langs button, .tabs button, .chips button, .actions button {
+    .langs button, .tabs button, .chips button, .actions button, .run-stop, .stop-all, .text-btn {
       border: 0;
       font: inherit;
       cursor: pointer;
@@ -52,27 +65,103 @@
     }
     .tabs button { background: transparent; color: var(--hint); border-radius: 9px; padding: 10px; }
     .tabs button.on { background: var(--btn); color: var(--btn-text); font-weight: 650; }
-    .status {
+    .running {
       background: var(--card);
-      border-radius: 12px;
-      padding: 12px 14px;
+      border-radius: 14px;
+      padding: 12px;
       margin-bottom: 12px;
-      font-weight: 650;
     }
-    .status.go { color: var(--ok); }
+    .running.on { box-shadow: inset 3px 0 0 var(--ok); }
+    .running-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .running-head h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--text);
+    }
+    .count {
+      min-width: 24px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--ok);
+      color: #06210f;
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .running-empty { margin: 6px 0 0; color: var(--hint); font-size: 13px; }
+    .run {
+      margin-top: 10px;
+      background: var(--bg);
+      border-radius: 12px;
+      padding: 10px 12px 12px;
+    }
+    .run.mine { box-shadow: inset 3px 0 0 var(--btn); }
+    .run-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .run-badge { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+      flex: none;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dot { animation: none; }
+    }
+    .kind {
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--btn);
+    }
+    .run h3 { margin: 8px 0 0; font-size: 16px; line-height: 1.3; }
+    .run-meta { margin: 4px 0 0; color: var(--hint); font-size: 13px; line-height: 1.35; }
+    .run-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+    .text-btn { background: transparent; color: var(--btn); padding: 0; font-size: 13px; font-weight: 700; }
+    .mine-tag { color: var(--btn); font-size: 13px; font-weight: 700; }
+    .run-stop {
+      flex: none;
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid var(--danger) !important;
+      border-radius: 999px;
+      padding: 6px 12px;
+      min-height: 36px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .stop-all {
+      display: block;
+      width: 100%;
+      margin-top: 8px;
+      background: transparent;
+      color: var(--danger);
+      padding: 8px;
+      font-weight: 700;
+    }
     .card {
       background: var(--card);
       border-radius: 14px;
       padding: 14px;
       margin-bottom: 12px;
     }
-    .card h2 {
+    .card h2, .draft {
       margin: 0 0 10px;
       font-size: 13px;
       letter-spacing: 0.04em;
       text-transform: uppercase;
       color: var(--hint);
     }
+    .draft { font-weight: 700; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     label { display: block; font-size: 13px; color: var(--hint); margin-bottom: 4px; }
     input, select {
@@ -94,10 +183,11 @@
       padding: 8px 12px;
     }
     .chips button.on { background: var(--btn); color: var(--btn-text); }
-    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .actions { display: grid; grid-template-columns: 1fr; gap: 8px; }
     .actions button { border-radius: 12px; padding: 12px; font-weight: 700; }
+    .actions button:disabled { opacity: 0.55; cursor: default; }
     .go { background: var(--btn); color: var(--btn-text); }
-    .stop { background: var(--card); color: var(--danger); border: 1px solid var(--line) !important; }
+    .hint { margin: 8px 2px 0; color: var(--hint); font-size: 13px; }
     .hidden { display: none; }
     .toast {
       position: sticky;
@@ -132,9 +222,18 @@
       <button type="button" id="tab-tickets" class="on">Appointments</button>
       <button type="button" id="tab-cars">Cars</button>
     </div>
-    <div id="status" class="status">Ready</div>
+    <section id="running" class="running" aria-live="polite">
+      <div class="running-head">
+        <h2 id="running-title">No search is running</h2>
+        <span id="running-count" class="count hidden">0</span>
+      </div>
+      <p id="running-empty" class="running-empty"></p>
+      <div id="running-list"></div>
+      <button type="button" id="stop-all" class="stop-all hidden">Stop all</button>
+    </section>
 
     <section id="panel-tickets">
+      <p id="draft-tickets" class="draft hidden"></p>
       <div class="card">
         <h2 id="lbl-service">Service</h2>
         <div id="services" class="chips"></div>
@@ -166,11 +265,12 @@
       </div>
       <div class="actions">
         <button type="button" class="go" id="start-ticket">Start search</button>
-        <button type="button" class="stop" id="stop-ticket">Stop</button>
       </div>
+      <p id="hint-ticket" class="hint"></p>
     </section>
 
     <section id="panel-cars" class="hidden">
+      <p id="draft-cars" class="draft hidden"></p>
       <div class="card">
         <h2 id="lbl-car">Car</h2>
         <div class="grid">
@@ -203,8 +303,8 @@
       </div>
       <div class="actions">
         <button type="button" class="go" id="start-car">Start car search</button>
-        <button type="button" class="stop" id="stop-car">Stop</button>
       </div>
+      <p id="hint-car" class="hint"></p>
     </section>
     <div id="toast" class="toast hidden"></div>
   </main>
@@ -212,33 +312,63 @@
     const COPY = {
       en: {
         title: "Poznań monitor", tickets: "Appointments", cars: "Cars",
-        ready: "Ready — set the filters and press Start",
-        searching: "Search is running",
+        runningNone: "No search is running",
+        runningHint: "Set the filters and start. Several searches can run at once, and each one stops on its own.",
         service: "Service", when: "Dates", from: "From", until: "Until", cases: "Number of cases",
         interval: "Check every", car: "The car", fuel: "Fuel", gear: "Gearbox",
         make: "Make", model: "Model", yearFrom: "Year from", yearTo: "Year to",
         priceFrom: "Price from, zł", priceTo: "Price to, zł", mileage: "Max mileage, km", region: "Region",
-        start: "Start search", stop: "Stop", startCar: "Start car search", any: "Any", choose: "Choose",
-        saved: "Saved", badRange: "The start date has to be on or before the end date.",
+        start: "Start search", startCar: "Start car search", addSearch: "Add this search",
+        alreadyBtn: "This search is running", stop: "Stop", stopAll: "Stop all",
+        confirmStopAll: "Stop every running search?",
+        any: "Any", choose: "Choose",
+        saved: "Saved", started: "Search started. It keeps running while you set up another.",
+        stopped: "Search stopped.", stoppedAll: "All searches stopped.",
+        notRunning: "That search is already stopped.",
+        already: "This exact search is already running.",
+        theseFilters: "These filters", showFilters: "Show filters",
+        newSearch: "New search", filtersOfRunning: "Running search",
+        hintIdle: "Several searches can run together. Each one keeps its own filters.",
+        hintAdd: "This adds another search. The ones above keep running.",
+        hintMine: "These filters are already running. Stop that search in the list above.",
+        hintInterval: "Its check interval stays as shown above. Stop it and start again to change the interval.",
+        fromShort: "from", untilShort: "to", km: "km",
+        badRange: "The start date has to be on or before the end date.",
         badYear: "Year from has to be on or before year to.",
         badPrice: "Price from has to be on or before price to.",
         catalogError: "The car list did not load. Refresh the page.",
-        needMake: "Choose the car make first."
+        needMake: "Choose the car make first.",
+        preview: "Browser preview. Inside Telegram this screen opens from the bot."
       },
       uk: {
         title: "Монітор Poznań", tickets: "Записи", cars: "Авто",
-        ready: "Готово — налаштуйте фільтри і натисніть Старт",
-        searching: "Пошук триває",
+        runningNone: "Немає активних пошуків",
+        runningHint: "Налаштуйте фільтри і запустіть. Можна тримати кілька пошуків одночасно і зупиняти кожен окремо.",
         service: "Послуга", when: "Дати", from: "Від", until: "До", cases: "Кількість справ",
         interval: "Перевіряти кожні", car: "Авто", fuel: "Паливо", gear: "Коробка",
         make: "Марка", model: "Модель", yearFrom: "Рік від", yearTo: "Рік до",
         priceFrom: "Ціна від, zł", priceTo: "Ціна до, zł", mileage: "Макс. пробіг, км", region: "Регіон",
-        start: "Почати пошук", stop: "Стоп", startCar: "Шукати авто", any: "Будь-яке", choose: "Оберіть",
-        saved: "Збережено", badRange: "Дата «від» має бути не пізніше дати «до».",
+        start: "Почати пошук", startCar: "Шукати авто", addSearch: "Додати цей пошук",
+        alreadyBtn: "Цей пошук уже йде", stop: "Стоп", stopAll: "Зупинити всі",
+        confirmStopAll: "Зупинити всі пошуки?",
+        any: "Будь-яке", choose: "Оберіть",
+        saved: "Збережено", started: "Пошук запущено. Він працює, поки ви налаштовуєте наступний.",
+        stopped: "Пошук зупинено.", stoppedAll: "Усі пошуки зупинено.",
+        notRunning: "Цей пошук уже зупинено.",
+        already: "Такий пошук уже запущено.",
+        theseFilters: "Ці фільтри", showFilters: "Показати фільтри",
+        newSearch: "Новий пошук", filtersOfRunning: "Запущений пошук",
+        hintIdle: "Можна запустити кілька пошуків. У кожного свої фільтри і своя кнопка стоп.",
+        hintAdd: "Це додасть ще один пошук. Ті, що вище, продовжать працювати.",
+        hintMine: "Ці фільтри вже шукають. Зупинити можна в списку вище.",
+        hintInterval: "Інтервал лишається таким, як у списку. Щоб змінити його, зупиніть пошук і запустіть знову.",
+        fromShort: "від", untilShort: "до", km: "км",
+        badRange: "Дата «від» має бути не пізніше дати «до».",
         badYear: "Рік «від» має бути не пізніше року «до».",
         badPrice: "Ціна «від» має бути не більшою за ціну «до».",
         catalogError: "Список авто не завантажився. Оновіть сторінку.",
-        needMake: "Спочатку оберіть марку."
+        needMake: "Спочатку оберіть марку.",
+        preview: "Перегляд у браузері. У Telegram цей екран відкривається з бота."
       }
     };
 
@@ -248,6 +378,9 @@
     let options = null;
     let lang = "en";
     let tab = location.hash === "#cars" || new URLSearchParams(location.search).get("tab") === "cars" ? "cars" : "tickets";
+    let busy = 0;
+    let epoch = 0;
+    let drawnKey = "";
 
     function text(key) { return COPY[lang][key]; }
 
@@ -282,7 +415,19 @@
       node.textContent = message;
       node.classList.remove("hidden");
       clearTimeout(toast._t);
-      toast._t = setTimeout(() => node.classList.add("hidden"), 2200);
+      toast._t = setTimeout(() => node.classList.add("hidden"), 2400);
+    }
+
+    async function commit(request) {
+      const mine = ++epoch;
+      busy += 1;
+      try {
+        const next = await request();
+        if (mine !== epoch) return null;
+        return next;
+      } finally {
+        busy -= 1;
+      }
     }
 
     function chip(container, label, on, click) {
@@ -294,11 +439,206 @@
       container.appendChild(button);
     }
 
-    function paint() {
+    function countLabel(count) {
+      if (lang === "en") return count === 1 ? "1 search running" : count + " searches running";
+      const mod10 = count % 10;
+      const mod100 = count % 100;
+      let word = "пошуків";
+      if (mod10 === 1 && mod100 !== 11) word = "пошук";
+      else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) word = "пошуки";
+      return count === 1 ? "1 пошук триває" : count + " " + word + " тривають";
+    }
+
+    function casesLabel(count) {
+      const n = Number(count);
+      if (lang === "en") return n === 1 ? "1 case" : n + " cases";
+      const mod10 = n % 10;
+      const mod100 = n % 100;
+      if (mod10 === 1 && mod100 !== 11) return n + " справа";
+      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return n + " справи";
+      return n + " справ";
+    }
+
+    function everyLabel(seconds) {
+      const minutes = Math.max(1, Math.round(Number(seconds) / 60));
+      if (lang === "uk") return minutes === 1 ? "щохвилини" : "кожні " + minutes + " хв";
+      return minutes === 1 ? "every 1 min" : "every " + minutes + " min";
+    }
+
+    function prettyDate(iso) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+      return match ? match[3] + "." + match[2] + "." + match[1] : "";
+    }
+
+    function amount(value) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toLocaleString("pl-PL") : value;
+    }
+
+    function lookup(list, id) {
+      if (!id) return "";
+      const found = (list || []).find((item) => (typeof item === "string" ? item : item.id) === id);
+      if (!found) {
+        return String(id).replace(/-/g, " ").replace(/(^|\s)\S/g, (chunk) => chunk.toUpperCase());
+      }
+      return typeof found === "string" ? found : found.label;
+    }
+
+    function serviceName(item) {
+      const found = (state.services || []).find((service) => service.id === item.service_key);
+      return found ? found[lang] : item.service_key;
+    }
+
+    function carTitle(item) {
+      const makes = (options && options.makes) || [];
+      const models = (options && options.models && options.models[item.make]) || [];
+      return [lookup(makes, item.make), item.model ? lookup(models, item.model) : ""].filter(Boolean).join(" ") || text("car");
+    }
+
+    function rangeLabel(from, to, unit) {
+      const suffix = unit ? " " + unit : "";
+      if (from && to) return amount(from) + "–" + amount(to) + suffix;
+      if (from) return text("fromShort") + " " + amount(from) + suffix;
+      if (to) return text("untilShort") + " " + amount(to) + suffix;
+      return "";
+    }
+
+    function carMeta(item) {
+      const parts = [];
+      const years = rangeLabel(item.year_from, item.year_to, "");
+      const prices = rangeLabel(item.price_from, item.price_to, "zł");
+      if (years) parts.push(years);
+      if (prices) parts.push(prices);
+      if (item.mileage_to) parts.push("≤ " + amount(item.mileage_to) + " " + text("km"));
+      if (item.region) parts.push(lookup((options && options.regions) || [], item.region));
+      const fuel = (state.fuels || []).find((entry) => entry.id === item.fuel_type);
+      const gear = (state.gears || []).find((entry) => entry.id === item.gearbox);
+      if (fuel) parts.push(fuel.label);
+      if (gear) parts.push(gear.label);
+      parts.push(everyLabel(item.poll_interval_seconds));
+      return parts.join(" · ");
+    }
+
+    function ticketMeta(item) {
+      const end = prettyDate(item.notify_before_date);
+      const start = prettyDate(item.notify_from_date);
+      const dates = start ? start + " → " + end : "→ " + end;
+      return [dates, casesLabel(item.num_cases), everyLabel(item.poll_interval_seconds)].join(" · ");
+    }
+
+    function visibleSearches() {
+      const tickets = (state.ticket_searches || []).map((item) => Object.assign({ kind: "ticket" }, item));
+      const cars = (state.car_searches || []).map((item) => Object.assign({ kind: "car" }, item));
+      return tab === "cars" ? cars.concat(tickets) : tickets.concat(cars);
+    }
+
+    function renderSearch(item) {
+      const card = document.createElement("article");
+      const sameTab = (item.kind === "car") === (tab === "cars");
+      card.className = "run" + (item.current && sameTab ? " mine" : "");
+
+      const top = document.createElement("div");
+      top.className = "run-top";
+      const badge = document.createElement("div");
+      badge.className = "run-badge";
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      dot.setAttribute("aria-hidden", "true");
+      const kind = document.createElement("span");
+      kind.className = "kind";
+      kind.textContent = item.kind === "car" ? text("cars") : text("tickets");
+      badge.append(dot, kind);
+      if (item.current && sameTab) {
+        const tag = document.createElement("span");
+        tag.className = "mine-tag";
+        tag.textContent = text("theseFilters");
+        badge.append(tag);
+      }
+
+      const titleText = item.kind === "car" ? carTitle(item) : serviceName(item);
+      const stop = document.createElement("button");
+      stop.type = "button";
+      stop.className = "run-stop";
+      stop.textContent = text("stop");
+      stop.setAttribute("aria-label", text("stop") + ": " + titleText);
+      stop.onclick = () => stopSearch(item.kind, item.key).catch((err) => toast(err.message));
+      top.append(badge, stop);
+
+      const title = document.createElement("h3");
+      title.textContent = titleText;
+      const meta = document.createElement("p");
+      meta.className = "run-meta";
+      meta.textContent = item.kind === "car" ? carMeta(item) : ticketMeta(item);
+      card.append(top, title, meta);
+
+      if (!(item.current && sameTab)) {
+        const actions = document.createElement("div");
+        actions.className = "run-actions";
+        const open = document.createElement("button");
+        open.type = "button";
+        open.className = "text-btn";
+        open.textContent = text("showFilters");
+        open.onclick = () => openSearch(item).catch((err) => toast(err.message));
+        actions.append(open);
+        card.append(actions);
+      }
+      return card;
+    }
+
+    function paintChrome() {
       const copy = COPY[lang];
+      const tickets = state.ticket_searches || [];
+      const cars = state.car_searches || [];
+      const total = tickets.length + cars.length;
+      document.getElementById("preview").textContent = copy.preview;
       document.getElementById("title").textContent = copy.title;
-      document.getElementById("tab-tickets").textContent = copy.tickets;
-      document.getElementById("tab-cars").textContent = copy.cars;
+      document.getElementById("tab-tickets").textContent = tickets.length ? copy.tickets + " · " + tickets.length : copy.tickets;
+      document.getElementById("tab-cars").textContent = cars.length ? copy.cars + " · " + cars.length : copy.cars;
+      document.getElementById("lang-en").className = lang === "en" ? "on" : "";
+      document.getElementById("lang-uk").className = lang === "uk" ? "on" : "";
+      document.getElementById("tab-tickets").className = tab === "tickets" ? "on" : "";
+      document.getElementById("tab-cars").className = tab === "cars" ? "on" : "";
+      document.getElementById("panel-tickets").classList.toggle("hidden", tab !== "tickets");
+      document.getElementById("panel-cars").classList.toggle("hidden", tab !== "cars");
+
+      const section = document.getElementById("running");
+      section.classList.toggle("on", total > 0);
+      document.getElementById("running-title").textContent = total ? countLabel(total) : copy.runningNone;
+      const count = document.getElementById("running-count");
+      count.textContent = String(total);
+      count.classList.toggle("hidden", total === 0);
+      const empty = document.getElementById("running-empty");
+      empty.textContent = copy.runningHint;
+      empty.classList.toggle("hidden", total > 0);
+      document.getElementById("stop-all").textContent = copy.stopAll;
+      document.getElementById("stop-all").classList.toggle("hidden", total < 2);
+
+      const searches = visibleSearches();
+      const key = lang + "|" + tab + "|" + JSON.stringify(searches);
+      if (key !== drawnKey) {
+        drawnKey = key;
+        const list = document.getElementById("running-list");
+        list.replaceChildren();
+        searches.forEach((item) => list.appendChild(renderSearch(item)));
+      }
+
+      ["ticket", "car"].forEach((kind) => {
+        const list = kind === "car" ? cars : tickets;
+        const draft = document.getElementById(kind === "car" ? "draft-cars" : "draft-tickets");
+        if (!list.length || (kind === "car") !== (tab === "cars")) {
+          draft.classList.add("hidden");
+        } else {
+          draft.classList.remove("hidden");
+          draft.textContent = list.some((item) => item.current) ? copy.filtersOfRunning : copy.newSearch;
+        }
+        const action = actionState(kind);
+        const button = document.getElementById(kind === "car" ? "start-car" : "start-ticket");
+        const hint = document.getElementById(kind === "car" ? "hint-car" : "hint-ticket");
+        button.textContent = action.label;
+        button.disabled = action.disabled;
+        hint.textContent = action.hint;
+      });
+
       document.getElementById("lbl-service").textContent = copy.service;
       document.getElementById("lbl-when").textContent = copy.when;
       document.getElementById("lbl-from").textContent = copy.from;
@@ -317,33 +657,42 @@
       document.getElementById("lbl-mileage").textContent = copy.mileage;
       document.getElementById("lbl-region").textContent = copy.region;
       document.getElementById("lbl-car-interval").textContent = copy.interval;
-      document.getElementById("start-ticket").textContent = copy.start;
-      document.getElementById("stop-ticket").textContent = copy.stop;
-      document.getElementById("start-car").textContent = copy.startCar;
-      document.getElementById("stop-car").textContent = copy.stop;
-      document.getElementById("lang-en").className = lang === "en" ? "on" : "";
-      document.getElementById("lang-uk").className = lang === "uk" ? "on" : "";
-      document.getElementById("tab-tickets").className = tab === "tickets" ? "on" : "";
-      document.getElementById("tab-cars").className = tab === "cars" ? "on" : "";
-      document.getElementById("panel-tickets").classList.toggle("hidden", tab !== "tickets");
-      document.getElementById("panel-cars").classList.toggle("hidden", tab !== "cars");
+    }
 
+    function actionState(kind) {
+      const copy = COPY[lang];
+      const list = kind === "car" ? state.car_searches || [] : state.ticket_searches || [];
+      const mine = list.find((item) => item.current);
+      const total = (state.ticket_searches || []).length + (state.car_searches || []).length;
+      const selected = Number(document.getElementById(kind === "car" ? "car-interval" : "interval").value);
+      if (mine) {
+        return {
+          label: copy.alreadyBtn,
+          disabled: true,
+          hint: mine.poll_interval_seconds !== selected ? copy.hintInterval : copy.hintMine
+        };
+      }
+      if (total > 0) return { label: copy.addSearch, disabled: false, hint: copy.hintAdd };
+      return {
+        label: kind === "car" ? copy.startCar : copy.start,
+        disabled: false,
+        hint: copy.hintIdle
+      };
+    }
+
+    function paint() {
       const cfg = state.config;
-      const running = tab === "tickets" ? state.ticket_running : state.car_running;
-      const status = document.getElementById("status");
-      status.textContent = running ? copy.searching : copy.ready;
-      status.className = running ? "status go" : "status";
-
       const services = document.getElementById("services");
-      services.innerHTML = "";
-      state.services.forEach((item) => chip(services, item[lang], item.id === cfg.service_key, () => save({ service_key: item.id })));
+      services.replaceChildren();
+      state.services.forEach((item) => chip(services, item[lang], item.id === cfg.service_key, () => save({ service_key: item.id }).catch((err) => toast(err.message))));
       const cases = document.getElementById("cases");
-      cases.innerHTML = "";
-      [1, 2, 3].forEach((n) => chip(cases, String(n), Number(cfg.num_cases) === n, () => save({ num_cases: n })));
+      cases.replaceChildren();
+      [1, 2, 3].forEach((n) => chip(cases, String(n), Number(cfg.num_cases) === n, () => save({ num_cases: n }).catch((err) => toast(err.message))));
 
       document.getElementById("from").value = cfg.notify_from_date || "";
       document.getElementById("until").value = cfg.notify_before_date || "";
-      document.getElementById("interval").value = String(cfg.poll_interval_seconds);
+      paintIntervals();
+      selectInterval("interval", cfg.poll_interval_seconds);
       const lists = options || { makes: [], models: {}, regions: [], years: [], prices: [], mileages: [] };
       fillSelect("make", lists.makes, cfg.car_make, text("choose"));
       const models = lists.models[cfg.car_make] || [];
@@ -355,26 +704,47 @@
       fillSelect("price-to", lists.prices, cfg.car_price_to, text("any"), amount);
       fillSelect("mileage", lists.mileages, cfg.car_mileage_to, text("any"), amount);
       fillSelect("region", lists.regions, cfg.car_region, text("any"));
-      document.getElementById("car-interval").value = String(cfg.car_poll_interval_seconds);
+      selectInterval("car-interval", cfg.car_poll_interval_seconds);
 
       const fuels = document.getElementById("fuels");
-      fuels.innerHTML = "";
-      chip(fuels, copy.any, !cfg.car_fuel_type, () => save({ car_fuel_type: "" }));
-      state.fuels.forEach((item) => chip(fuels, item.label, item.id === cfg.car_fuel_type, () => save({ car_fuel_type: item.id })));
+      fuels.replaceChildren();
+      chip(fuels, text("any"), !cfg.car_fuel_type, () => save({ car_fuel_type: "" }).catch((err) => toast(err.message)));
+      state.fuels.forEach((item) => chip(fuels, item.label, item.id === cfg.car_fuel_type, () => save({ car_fuel_type: item.id }).catch((err) => toast(err.message))));
       const gears = document.getElementById("gears");
-      gears.innerHTML = "";
-      chip(gears, copy.any, !cfg.car_gearbox, () => save({ car_gearbox: "" }));
-      state.gears.forEach((item) => chip(gears, item.label, item.id === cfg.car_gearbox, () => save({ car_gearbox: item.id })));
+      gears.replaceChildren();
+      chip(gears, text("any"), !cfg.car_gearbox, () => save({ car_gearbox: "" }).catch((err) => toast(err.message)));
+      state.gears.forEach((item) => chip(gears, item.label, item.id === cfg.car_gearbox, () => save({ car_gearbox: item.id }).catch((err) => toast(err.message))));
+      paintChrome();
     }
 
-    function amount(value) {
-      const number = Number(value);
-      return Number.isFinite(number) ? number.toLocaleString("pl-PL") : value;
+    function paintIntervals() {
+      const labels = lang === "uk"
+        ? { 60: "1 хв", 180: "3 хв", 300: "5 хв", 600: "10 хв", 900: "15 хв", 1800: "30 хв" }
+        : { 60: "1 min", 180: "3 min", 300: "5 min", 600: "10 min", 900: "15 min", 1800: "30 min" };
+      ["interval", "car-interval"].forEach((id) => {
+        Array.from(document.getElementById(id).options).forEach((option) => {
+          if (labels[option.value]) option.textContent = labels[option.value];
+        });
+      });
+    }
+
+    function selectInterval(id, seconds) {
+      const select = document.getElementById(id);
+      Array.from(select.querySelectorAll("option[data-custom]")).forEach((option) => option.remove());
+      const value = String(seconds || "");
+      if (value && !Array.from(select.options).some((option) => option.value === value)) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.dataset.custom = "1";
+        option.textContent = everyLabel(Number(value));
+        select.appendChild(option);
+      }
+      if (value) select.value = value;
     }
 
     function fillSelect(id, items, current, emptyLabel, format) {
       const select = document.getElementById(id);
-      select.innerHTML = "";
+      select.replaceChildren();
       const empty = document.createElement("option");
       empty.value = "";
       empty.textContent = emptyLabel;
@@ -425,30 +795,95 @@
         paint();
         return;
       }
-      state = await api("/api/state", patch);
+      const next = await commit(() => api("/api/state", patch));
+      if (!next) return;
+      state = next;
       lang = state.config.language === "uk" ? "uk" : "en";
       paint();
     }
 
-    async function run(path, needMake) {
-      if (needMake && !document.getElementById("make").value.trim()) {
+    async function run(kind) {
+      if (kind === "car" && !document.getElementById("make").value.trim()) {
         toast(text("needMake"));
         return;
       }
       await save();
-      state = await api(path, {});
+      const list = kind === "car" ? state.car_searches || [] : state.ticket_searches || [];
+      if (list.some((item) => item.current)) {
+        toast(text("already"));
+        paintChrome();
+        return;
+      }
+      const next = await commit(() => api(kind === "car" ? "/api/car/start" : "/api/ticket/start", {}));
+      if (!next) return;
+      state = next;
       paint();
-      toast(text("saved"));
+      toast(text("started"));
     }
 
-    document.getElementById("lang-en").onclick = () => save({ language: "en" });
-    document.getElementById("lang-uk").onclick = () => save({ language: "uk" });
-    document.getElementById("tab-tickets").onclick = () => { tab = "tickets"; paint(); };
-    document.getElementById("tab-cars").onclick = () => { tab = "cars"; paint(); };
-    document.getElementById("start-ticket").onclick = () => run("/api/ticket/start");
-    document.getElementById("stop-ticket").onclick = () => run("/api/ticket/stop");
-    document.getElementById("start-car").onclick = () => run("/api/car/start", true);
-    document.getElementById("stop-car").onclick = () => run("/api/car/stop");
+    async function stopSearch(kind, key) {
+      const before = (kind === "car" ? state.car_searches : state.ticket_searches).length;
+      const next = await commit(() => api(kind === "car" ? "/api/car/stop" : "/api/ticket/stop", { key: key }));
+      if (!next) return;
+      state = next;
+      const after = (kind === "car" ? state.car_searches : state.ticket_searches).length;
+      drawnKey = "";
+      paintChrome();
+      toast(text(after < before ? "stopped" : "notRunning"));
+    }
+
+    async function stopAll() {
+      const next = await commit(() => api("/api/stop-all", {}));
+      if (!next) return;
+      state = next;
+      drawnKey = "";
+      paintChrome();
+      toast(text("stoppedAll"));
+    }
+
+    function askStopAll() {
+      const message = text("confirmStopAll");
+      if (tg && tg.showConfirm) {
+        tg.showConfirm(message, (ok) => { if (ok) stopAll().catch((err) => toast(err.message)); });
+        return;
+      }
+      if (window.confirm(message)) stopAll().catch((err) => toast(err.message));
+    }
+
+    async function openSearch(item) {
+      tab = item.kind === "car" ? "cars" : "tickets";
+      if (item.kind === "car") {
+        await save({
+          car_make: item.make,
+          car_model: item.model,
+          car_region: item.region,
+          car_year_from: item.year_from,
+          car_year_to: item.year_to,
+          car_price_from: item.price_from,
+          car_price_to: item.price_to,
+          car_mileage_to: item.mileage_to,
+          car_fuel_type: item.fuel_type,
+          car_gearbox: item.gearbox,
+          car_poll_interval_seconds: item.poll_interval_seconds
+        });
+        return;
+      }
+      await save({
+        service_key: item.service_key,
+        num_cases: item.num_cases,
+        notify_from_date: item.notify_from_date,
+        notify_before_date: item.notify_before_date,
+        poll_interval_seconds: item.poll_interval_seconds
+      });
+    }
+
+    document.getElementById("lang-en").onclick = () => save({ language: "en" }).catch((err) => toast(err.message));
+    document.getElementById("lang-uk").onclick = () => save({ language: "uk" }).catch((err) => toast(err.message));
+    document.getElementById("tab-tickets").onclick = () => { tab = "tickets"; drawnKey = ""; paint(); };
+    document.getElementById("tab-cars").onclick = () => { tab = "cars"; drawnKey = ""; paint(); };
+    document.getElementById("start-ticket").onclick = () => run("ticket").catch((err) => toast(err.message));
+    document.getElementById("start-car").onclick = () => run("car").catch((err) => toast(err.message));
+    document.getElementById("stop-all").onclick = askStopAll;
     ["from", "until", "interval", "model", "year-from", "year-to", "price-from", "price-to", "mileage", "region", "car-interval"]
       .forEach((id) => document.getElementById(id).addEventListener("change", () => save().catch((err) => toast(err.message))));
     document.getElementById("make").addEventListener("change", () => {
@@ -460,6 +895,24 @@
       save().catch((err) => toast(err.message));
     });
 
+    async function refresh() {
+      if (busy || document.hidden || !state) return;
+      const seen = epoch;
+      busy += 1;
+      try {
+        const next = await api("/api/state");
+        if (seen !== epoch) return;
+        const configSame = JSON.stringify(next.config) === JSON.stringify(state.config);
+        state = next;
+        if (configSame) paintChrome();
+        else paint();
+      } catch (err) {
+        /* The next poll retries. A failed refresh should not wipe the form. */
+      } finally {
+        busy -= 1;
+      }
+    }
+
     async function boot() {
       if (preview) document.getElementById("preview").classList.remove("hidden");
       else {
@@ -469,10 +922,13 @@
         tg.onEvent("themeChanged", applyTheme);
       }
       [options, state] = await Promise.all([api("/api/options"), api("/api/state")]);
+      state.ticket_searches = state.ticket_searches || [];
+      state.car_searches = state.car_searches || [];
       lang = state.config.language === "uk" ? "uk" : (tg && tg.initDataUnsafe && String(tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code || "").startsWith("uk") ? "uk" : "en");
       paint();
       if (options.error) toast(text("catalogError"));
       if (lang !== state.config.language) await save({ language: lang });
+      setInterval(() => refresh(), 5000);
     }
 
     boot().catch((err) => toast(err.message));
