@@ -52,6 +52,7 @@ class CarSearchParams:
     year_to: int | None = None
     price_from: int | None = None
     price_to: int | None = None
+    price_tolerance: int = 0
     mileage_to: int | None = None
     fuel_type: str = ""
     gearbox: str = ""
@@ -67,11 +68,28 @@ def _norm(value: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+def _percent_delta(amount: int, percent: int) -> int:
+    return (amount * percent + 50) // 100
+
+
+def accepted_price_bounds(params: CarSearchParams) -> tuple[int | None, int | None]:
+    """Widen the stated price by the tolerance, e.g. 50 000 zł ±10% accepts up to 55 000 zł."""
+    percent = params.price_tolerance if params.price_tolerance > 0 else 0
+    low = params.price_from
+    high = params.price_to
+    if percent and low is not None:
+        low = max(0, low - _percent_delta(low, percent))
+    if percent and high is not None:
+        high = high + _percent_delta(high, percent)
+    return low, high
+
+
 def listing_within_filters(item: CarListing, params: CarSearchParams) -> bool:
     """Otomoto sometimes renders offers the price query did not ask for. Check the parsed offer."""
-    if params.price_from is not None and (item.price is None or item.price < params.price_from):
+    low, high = accepted_price_bounds(params)
+    if params.price_from is not None and (item.price is None or low is None or item.price < low):
         return False
-    if params.price_to is not None and (item.price is None or item.price > params.price_to):
+    if params.price_to is not None and (item.price is None or high is None or item.price > high):
         return False
     if params.year_from is not None and (item.year is None or item.year < params.year_from):
         return False
@@ -115,10 +133,11 @@ class OtomotoClient:
             query["search[filter_float_year:from]"] = params.year_from
         if params.year_to:
             query["search[filter_float_year:to]"] = params.year_to
-        if params.price_from:
-            query["search[filter_float_price:from]"] = params.price_from
-        if params.price_to:
-            query["search[filter_float_price:to]"] = params.price_to
+        low, high = accepted_price_bounds(params)
+        if low:
+            query["search[filter_float_price:from]"] = low
+        if high:
+            query["search[filter_float_price:to]"] = high
         if params.mileage_to:
             query["search[filter_float_mileage:to]"] = params.mileage_to
         if params.fuel_type:

@@ -32,7 +32,7 @@ from monitor import load_state, save_state
 from qmatic_client import QmaticClient, TimeSlot
 from search_log import log_search_result
 from search_config import search_state_key_from_config
-from car_config import car_search_info, car_search_key_from_config
+from car_config import car_search_info, car_search_key_from_config, parse_price, parse_tolerance
 from car_monitor import CAR_STATE_FILE, load_car_state, save_car_state
 from car_session import CarManager, get_car_manager
 from search_session import SearchManager, get_search_manager, SLOT_CONFIRMATIONS_KEY
@@ -76,6 +76,7 @@ CAR_PROMPT_KEYS = {
     "car_year_to": "prompt_car_year_to",
     "car_price_from": "prompt_car_price_from",
     "car_price_to": "prompt_car_price_to",
+    "car_price_tolerance": "prompt_car_price_tolerance",
     "car_mileage_to": "prompt_car_mileage_to",
     "car_poll_interval_seconds": "prompt_car_poll_interval_seconds",
 }
@@ -88,6 +89,7 @@ CAR_VALUE_BUTTON_KEYS = {
     "car_year_to": "btn_car_year_to",
     "car_price_from": "btn_car_price_from",
     "car_price_to": "btn_car_price_to",
+    "car_price_tolerance": "btn_car_price_tolerance",
     "car_mileage_to": "btn_car_mileage_to",
 }
 
@@ -249,6 +251,8 @@ def _car_manager(application: Application) -> CarManager:
 
 def _car_value_button(lang: Language, field: str, config: dict) -> InlineKeyboardButton:
     raw = str(config.get(field) or "").strip()
+    if field == "car_price_tolerance":
+        raw = raw or "0"
     label = t(CAR_VALUE_BUTTON_KEYS[field], lang, value=raw or "—")
     return InlineKeyboardButton(label, callback_data=f"prompt:{field}")
 
@@ -272,6 +276,7 @@ def _car_keyboard(lang: Language, manager, config: dict) -> InlineKeyboardMarkup
                 _car_value_button(lang, "car_price_from", config),
                 _car_value_button(lang, "car_price_to", config),
             ],
+            [_car_value_button(lang, "car_price_tolerance", config)],
             [
                 _car_value_button(lang, "car_mileage_to", config),
                 _car_value_button(lang, "car_region", config),
@@ -383,6 +388,21 @@ async def _apply_car_value(
         if slug and not re.fullmatch(r"[a-z0-9-]+", slug):
             return False
         stored = slug
+    elif field in ("car_price_from", "car_price_to"):
+        try:
+            stored = parse_price(value)
+        except ValueError:
+            return False
+        current = load_user_config()
+        start = stored if field == "car_price_from" else str(current.get("car_price_from") or "")
+        end = stored if field == "car_price_to" else str(current.get("car_price_to") or "")
+        if start and end and int(start) > int(end):
+            return False
+    elif field == "car_price_tolerance":
+        try:
+            stored = parse_tolerance(value)
+        except ValueError:
+            return False
     elif field in CAR_INT_FIELDS:
         digits = re.sub(r"[^\d]", "", value)
         if not digits:

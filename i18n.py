@@ -236,6 +236,7 @@ TRANSLATIONS: dict[str, dict[Language, str]] = {
     "btn_car_year_to": {"en": "Year to: {value}", "uk": "Year to: {value}"},
     "btn_car_price_from": {"en": "Price from: {value}", "uk": "Price from: {value}"},
     "btn_car_price_to": {"en": "Price to: {value}", "uk": "Price to: {value}"},
+    "btn_car_price_tolerance": {"en": "Tolerance: ±{value}%", "uk": "Похибка: ±{value}%"},
     "btn_car_mileage_to": {"en": "Max mileage: {value}", "uk": "Max mileage: {value}"},
     "btn_car_interval": {"en": "Interval: {interval}", "uk": "Interval: {interval}"},
     "prompt_car_make": {
@@ -259,12 +260,16 @@ TRANSLATIONS: dict[str, dict[Language, str]] = {
         "uk": "🚗 <b>Enter last year</b>\n\nExample: <code>2020</code>",
     },
     "prompt_car_price_from": {
-        "en": "🚗 <b>Enter minimum price in PLN</b>\n\nExample: <code>20000</code>",
-        "uk": "🚗 <b>Enter minimum price in PLN</b>\n\nExample: <code>20000</code>",
+        "en": "🚗 <b>Enter minimum price in PLN</b>\n\nExample: <code>20000</code>\nAny amount works, not only the preset steps.",
+        "uk": "🚗 <b>Вкажіть мінімальну ціну в злотих</b>\n\nПриклад: <code>47500</code>\nМожна будь-яку суму, не лише крок зі списку.",
     },
     "prompt_car_price_to": {
-        "en": "🚗 <b>Enter maximum price in PLN</b>\n\nExample: <code>40000</code>",
-        "uk": "🚗 <b>Enter maximum price in PLN</b>\n\nExample: <code>40000</code>",
+        "en": "🚗 <b>Enter maximum price in PLN</b>\n\nExample: <code>40000</code>\nAny amount works, not only the preset steps.",
+        "uk": "🚗 <b>Вкажіть максимальну ціну в злотих</b>\n\nПриклад: <code>47500</code>\nМожна будь-яку суму, не лише крок зі списку.",
+    },
+    "prompt_car_price_tolerance": {
+        "en": "🚗 <b>Price tolerance, percent</b>\n\nExample: <code>10</code> keeps a 40 000–50 000 zł search open to 36 000–55 000 zł.\nSend <code>0</code> to stay on the exact limits. From 0 to 100.",
+        "uk": "🚗 <b>Похибка ціни, відсотки</b>\n\nПриклад: <code>10</code> для меж 40 000–50 000 zł покаже також 36 000–55 000 zł.\nНадішліть <code>0</code>, щоб лишити точні межі. Від 0 до 100.",
     },
     "prompt_car_mileage_to": {
         "en": "🚗 <b>Enter maximum mileage in km</b>\n\nExample: <code>150000</code>",

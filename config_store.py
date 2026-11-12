@@ -32,6 +32,7 @@ DEFAULT_USER_CONFIG: dict[str, Any] = {
     "car_year_to": "",
     "car_price_from": "",
     "car_price_to": "",
+    "car_price_tolerance": "0",
     "car_mileage_to": "",
     "car_fuel_type": "",
     "car_gearbox": "",
