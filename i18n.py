@@ -205,6 +205,15 @@ TRANSLATIONS: dict[str, dict[Language, str]] = {
         "en": "❌ Invalid value. Make/model/region use latin letters and hyphens (e.g. <code>volkswagen</code>, <code>seria-3</code>). Numbers for prices, years and mileage.",
         "uk": "❌ Invalid value. Make/model/region use latin letters and hyphens (e.g. <code>volkswagen</code>, <code>seria-3</code>). Numbers for prices, years and mileage.",
     },
+    "btn_open_app": {"en": "Open app", "uk": "Відкрити застосунок"},
+    "app_intro": {
+        "en": "Appointments and car filters are in the app. Alerts still arrive in this chat.",
+        "uk": "Записи і фільтри авто — у застосунку. Сповіщення й далі приходять у цей чат.",
+    },
+    "app_missing_url": {
+        "en": "Set WEBAPP_URL in .env to an https address that points at this bot's port 8080, then restart.",
+        "uk": "Вкажіть WEBAPP_URL у .env — https-адреса на порт 8080 цього бота — і перезапустіть.",
+    },
     "btn_car_menu": {"en": "🚗 Car search", "uk": "🚗 Поиск авто"},
     "btn_car_status": {"en": "🚗 Car status", "uk": "🚗 Поиск статус"},
     "btn_car_start": {"en": "🟢 Start car search", "uk": "🟢 Start car search"},

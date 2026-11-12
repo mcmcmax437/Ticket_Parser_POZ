@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Poznań monitor</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #efeff4;
+      --text: #1c1c1e;
+      --hint: #6d6d72;
+      --card: #ffffff;
+      --btn: #2481cc;
+      --btn-text: #ffffff;
+      --line: rgba(60, 60, 67, 0.12);
+      --danger: #d64545;
+      --ok: #1f8f4e;
+      color-scheme: light dark;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    main { max-width: 520px; margin: 0 auto; padding: 16px 16px 32px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    h1 { font-size: 20px; margin: 0; }
+    .langs { display: flex; gap: 6px; }
+    .langs button, .tabs button, .chips button, .actions button {
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+    .langs button {
+      background: var(--card);
+      color: var(--hint);
+      border-radius: 8px;
+      padding: 6px 10px;
+    }
+    .langs button.on { color: var(--btn); font-weight: 700; }
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: var(--card);
+      padding: 4px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+    }
+    .tabs button { background: transparent; color: var(--hint); border-radius: 9px; padding: 10px; }
+    .tabs button.on { background: var(--btn); color: var(--btn-text); font-weight: 650; }
+    .status {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      font-weight: 650;
+    }
+    .status.go { color: var(--ok); }
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--hint);
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    label { display: block; font-size: 13px; color: var(--hint); margin-bottom: 4px; }
+    input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--bg);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+    }
+    .field { margin-bottom: 10px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chips button {
+      background: var(--bg);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 12px;
+    }
+    .chips button.on { background: var(--btn); color: var(--btn-text); }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .actions button { border-radius: 12px; padding: 12px; font-weight: 700; }
+    .go { background: var(--btn); color: var(--btn-text); }
+    .stop { background: var(--card); color: var(--danger); border: 1px solid var(--line) !important; }
+    .hidden { display: none; }
+    .toast {
+      position: sticky;
+      bottom: 8px;
+      background: var(--text);
+      color: var(--bg);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-top: 8px;
+    }
+    .preview {
+      background: #fff4d6;
+      color: #6a4b00;
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div id="preview" class="preview hidden">Browser preview. Inside Telegram this screen opens from the bot.</div>
+    <header>
+      <h1 id="title">Poznań monitor</h1>
+      <div class="langs">
+        <button type="button" id="lang-en" data-lang="en">EN</button>
+        <button type="button" id="lang-uk" data-lang="uk">UK</button>
+      </div>
+    </header>
+    <div class="tabs">
+      <button type="button" id="tab-tickets" class="on">Appointments</button>
+      <button type="button" id="tab-cars">Cars</button>
+    </div>
+    <div id="status" class="status">Ready</div>
+
+    <section id="panel-tickets">
+      <div class="card">
+        <h2 id="lbl-service">Service</h2>
+        <div id="services" class="chips"></div>
+      </div>
+      <div class="card">
+        <h2 id="lbl-when">When</h2>
+        <div class="grid">
+          <div class="field">
+            <label id="lbl-from" for="from">From</label>
+            <input id="from" type="date" />
+          </div>
+          <div class="field">
+            <label id="lbl-until" for="until">Until</label>
+            <input id="until" type="date" />
+          </div>
+        </div>
+        <label id="lbl-cases">Cases</label>
+        <div id="cases" class="chips"></div>
+        <div class="field" style="margin-top:12px">
+          <label id="lbl-interval" for="interval">Check every</label>
+          <select id="interval">
+            <option value="60">1 min</option>
+            <option value="180">3 min</option>
+            <option value="300">5 min</option>
+            <option value="600">10 min</option>
+            <option value="900">15 min</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="go" id="start-ticket">Start search</button>
+        <button type="button" class="stop" id="stop-ticket">Stop</button>
+      </div>
+    </section>
+
+    <section id="panel-cars" class="hidden">
+      <div class="card">
+        <h2 id="lbl-car">Car</h2>
+        <div class="grid">
+          <div class="field"><label id="lbl-make" for="make">Make</label><input id="make" placeholder="toyota" /></div>
+          <div class="field"><label id="lbl-model" for="model">Model</label><input id="model" placeholder="corolla" /></div>
+          <div class="field"><label id="lbl-year-from" for="year-from">Year from</label><input id="year-from" inputmode="numeric" placeholder="2018" /></div>
+          <div class="field"><label id="lbl-year-to" for="year-to">Year to</label><input id="year-to" inputmode="numeric" placeholder="2024" /></div>
+          <div class="field"><label id="lbl-price-from" for="price-from">Price from</label><input id="price-from" inputmode="numeric" placeholder="40000" /></div>
+          <div class="field"><label id="lbl-price-to" for="price-to">Price to</label><input id="price-to" inputmode="numeric" placeholder="50000" /></div>
+          <div class="field"><label id="lbl-mileage" for="mileage">Max km</label><input id="mileage" inputmode="numeric" placeholder="150000" /></div>
+          <div class="field"><label id="lbl-region" for="region">Region</label><input id="region" placeholder="wielkopolskie" /></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2 id="lbl-fuel">Fuel</h2>
+        <div id="fuels" class="chips"></div>
+      </div>
+      <div class="card">
+        <h2 id="lbl-gear">Gearbox</h2>
+        <div id="gears" class="chips"></div>
+      </div>
+      <div class="card">
+        <label id="lbl-car-interval" for="car-interval">Check every</label>
+        <select id="car-interval">
+          <option value="300">5 min</option>
+          <option value="600">10 min</option>
+          <option value="900">15 min</option>
+          <option value="1800">30 min</option>
+        </select>
+      </div>
+      <div class="actions">
+        <button type="button" class="go" id="start-car">Start car search</button>
+        <button type="button" class="stop" id="stop-car">Stop</button>
+      </div>
+    </section>
+    <div id="toast" class="toast hidden"></div>
+  </main>
+  <script>
+    const COPY = {
+      en: {
+        title: "Poznań monitor", tickets: "Appointments", cars: "Cars",
+        ready: "Ready — set the filters and press Start",
+        searching: "Search is running",
+        service: "Service", when: "Dates", from: "From", until: "Until", cases: "Number of cases",
+        interval: "Check every", car: "The car", fuel: "Fuel", gear: "Gearbox",
+        make: "Make", model: "Model", yearFrom: "Year from", yearTo: "Year to",
+        priceFrom: "Price from, zł", priceTo: "Price to, zł", mileage: "Max mileage, km", region: "Region",
+        start: "Start search", stop: "Stop", startCar: "Start car search", any: "Any",
+        saved: "Saved", badRange: "The start date has to be on or before the end date.",
+        needMake: "Enter the car make first."
+      },
+      uk: {
+        title: "Монітор Poznań", tickets: "Записи", cars: "Авто",
+        ready: "Готово — налаштуйте фільтри і натисніть Старт",
+        searching: "Пошук триває",
+        service: "Послуга", when: "Дати", from: "Від", until: "До", cases: "Кількість справ",
+        interval: "Перевіряти кожні", car: "Авто", fuel: "Паливо", gear: "Коробка",
+        make: "Марка", model: "Модель", yearFrom: "Рік від", yearTo: "Рік до",
+        priceFrom: "Ціна від, zł", priceTo: "Ціна до, zł", mileage: "Макс. пробіг, км", region: "Регіон",
+        start: "Почати пошук", stop: "Стоп", startCar: "Шукати авто", any: "Будь-яке",
+        saved: "Збережено", badRange: "Дата «від» має бути не пізніше дати «до».",
+        needMake: "Спочатку вкажіть марку."
+      }
+    };
+
+    const tg = window.Telegram && window.Telegram.WebApp;
+    const preview = !(tg && tg.initData);
+    let state = null;
+    let lang = "en";
+    let tab = location.hash === "#cars" || new URLSearchParams(location.search).get("tab") === "cars" ? "cars" : "tickets";
+
+    function text(key) { return COPY[lang][key]; }
+
+    function applyTheme() {
+      if (!tg) return;
+      const p = tg.themeParams || {};
+      const root = document.documentElement;
+      if (p.bg_color) root.style.setProperty("--bg", p.bg_color);
+      if (p.text_color) root.style.setProperty("--text", p.text_color);
+      if (p.hint_color) root.style.setProperty("--hint", p.hint_color);
+      if (p.secondary_bg_color) root.style.setProperty("--card", p.secondary_bg_color);
+      if (p.button_color) root.style.setProperty("--btn", p.button_color);
+      if (p.button_text_color) root.style.setProperty("--btn-text", p.button_text_color);
+    }
+
+    async function api(path, body) {
+      const headers = { "Content-Type": "application/json" };
+      if (tg && tg.initData) headers["X-Telegram-Init-Data"] = tg.initData;
+      else headers["X-Local-Preview"] = "1";
+      const response = await fetch(path, {
+        method: body ? "POST" : "GET",
+        headers,
+        body: body ? JSON.stringify(body) : undefined
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Request failed");
+      return payload;
+    }
+
+    function toast(message) {
+      const node = document.getElementById("toast");
+      node.textContent = message;
+      node.classList.remove("hidden");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => node.classList.add("hidden"), 2200);
+    }
+
+    function chip(container, label, on, click) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.className = on ? "on" : "";
+      button.onclick = click;
+      container.appendChild(button);
+    }
+
+    function paint() {
+      const copy = COPY[lang];
+      document.getElementById("title").textContent = copy.title;
+      document.getElementById("tab-tickets").textContent = copy.tickets;
+      document.getElementById("tab-cars").textContent = copy.cars;
+      document.getElementById("lbl-service").textContent = copy.service;
+      document.getElementById("lbl-when").textContent = copy.when;
+      document.getElementById("lbl-from").textContent = copy.from;
+      document.getElementById("lbl-until").textContent = copy.until;
+      document.getElementById("lbl-cases").textContent = copy.cases;
+      document.getElementById("lbl-interval").textContent = copy.interval;
+      document.getElementById("lbl-car").textContent = copy.car;
+      document.getElementById("lbl-fuel").textContent = copy.fuel;
+      document.getElementById("lbl-gear").textContent = copy.gear;
+      document.getElementById("lbl-make").textContent = copy.make;
+      document.getElementById("lbl-model").textContent = copy.model;
+      document.getElementById("lbl-year-from").textContent = copy.yearFrom;
+      document.getElementById("lbl-year-to").textContent = copy.yearTo;
+      document.getElementById("lbl-price-from").textContent = copy.priceFrom;
+      document.getElementById("lbl-price-to").textContent = copy.priceTo;
+      document.getElementById("lbl-mileage").textContent = copy.mileage;
+      document.getElementById("lbl-region").textContent = copy.region;
+      document.getElementById("lbl-car-interval").textContent = copy.interval;
+      document.getElementById("start-ticket").textContent = copy.start;
+      document.getElementById("stop-ticket").textContent = copy.stop;
+      document.getElementById("start-car").textContent = copy.startCar;
+      document.getElementById("stop-car").textContent = copy.stop;
+      document.getElementById("lang-en").className = lang === "en" ? "on" : "";
+      document.getElementById("lang-uk").className = lang === "uk" ? "on" : "";
+      document.getElementById("tab-tickets").className = tab === "tickets" ? "on" : "";
+      document.getElementById("tab-cars").className = tab === "cars" ? "on" : "";
+      document.getElementById("panel-tickets").classList.toggle("hidden", tab !== "tickets");
+      document.getElementById("panel-cars").classList.toggle("hidden", tab !== "cars");
+
+      const cfg = state.config;
+      const running = tab === "tickets" ? state.ticket_running : state.car_running;
+      const status = document.getElementById("status");
+      status.textContent = running ? copy.searching : copy.ready;
+      status.className = running ? "status go" : "status";
+
+      const services = document.getElementById("services");
+      services.innerHTML = "";
+      state.services.forEach((item) => chip(services, item[lang], item.id === cfg.service_key, () => save({ service_key: item.id })));
+      const cases = document.getElementById("cases");
+      cases.innerHTML = "";
+      [1, 2, 3].forEach((n) => chip(cases, String(n), Number(cfg.num_cases) === n, () => save({ num_cases: n })));
+
+      document.getElementById("from").value = cfg.notify_from_date || "";
+      document.getElementById("until").value = cfg.notify_before_date || "";
+      document.getElementById("interval").value = String(cfg.poll_interval_seconds);
+      document.getElementById("make").value = cfg.car_make || "";
+      document.getElementById("model").value = cfg.car_model || "";
+      document.getElementById("year-from").value = cfg.car_year_from || "";
+      document.getElementById("year-to").value = cfg.car_year_to || "";
+      document.getElementById("price-from").value = cfg.car_price_from || "";
+      document.getElementById("price-to").value = cfg.car_price_to || "";
+      document.getElementById("mileage").value = cfg.car_mileage_to || "";
+      document.getElementById("region").value = cfg.car_region || "";
+      document.getElementById("car-interval").value = String(cfg.car_poll_interval_seconds);
+
+      const fuels = document.getElementById("fuels");
+      fuels.innerHTML = "";
+      chip(fuels, copy.any, !cfg.car_fuel_type, () => save({ car_fuel_type: "" }));
+      state.fuels.forEach((item) => chip(fuels, item.label, item.id === cfg.car_fuel_type, () => save({ car_fuel_type: item.id })));
+      const gears = document.getElementById("gears");
+      gears.innerHTML = "";
+      chip(gears, copy.any, !cfg.car_gearbox, () => save({ car_gearbox: "" }));
+      state.gears.forEach((item) => chip(gears, item.label, item.id === cfg.car_gearbox, () => save({ car_gearbox: item.id })));
+    }
+
+    function formPatch() {
+      return {
+        notify_from_date: document.getElementById("from").value,
+        notify_before_date: document.getElementById("until").value,
+        poll_interval_seconds: Number(document.getElementById("interval").value),
+        car_make: document.getElementById("make").value.trim(),
+        car_model: document.getElementById("model").value.trim(),
+        car_year_from: document.getElementById("year-from").value.trim(),
+        car_year_to: document.getElementById("year-to").value.trim(),
+        car_price_from: document.getElementById("price-from").value.trim(),
+        car_price_to: document.getElementById("price-to").value.trim(),
+        car_mileage_to: document.getElementById("mileage").value.trim(),
+        car_region: document.getElementById("region").value.trim(),
+        car_poll_interval_seconds: Number(document.getElementById("car-interval").value)
+      };
+    }
+
+    async function save(extra) {
+      const patch = Object.assign(formPatch(), extra || {});
+      if (patch.notify_from_date && patch.notify_before_date && patch.notify_from_date > patch.notify_before_date) {
+        toast(text("badRange"));
+        return;
+      }
+      state = await api("/api/state", patch);
+      lang = state.config.language === "uk" ? "uk" : "en";
+      paint();
+    }
+
+    async function run(path, needMake) {
+      if (needMake && !document.getElementById("make").value.trim()) {
+        toast(text("needMake"));
+        return;
+      }
+      await save();
+      state = await api(path, {});
+      paint();
+      toast(text("saved"));
+    }
+
+    document.getElementById("lang-en").onclick = () => save({ language: "en" });
+    document.getElementById("lang-uk").onclick = () => save({ language: "uk" });
+    document.getElementById("tab-tickets").onclick = () => { tab = "tickets"; paint(); };
+    document.getElementById("tab-cars").onclick = () => { tab = "cars"; paint(); };
+    document.getElementById("start-ticket").onclick = () => run("/api/ticket/start");
+    document.getElementById("stop-ticket").onclick = () => run("/api/ticket/stop");
+    document.getElementById("start-car").onclick = () => run("/api/car/start", true);
+    document.getElementById("stop-car").onclick = () => run("/api/car/stop");
+    ["from", "until", "interval", "make", "model", "year-from", "year-to", "price-from", "price-to", "mileage", "region", "car-interval"]
+      .forEach((id) => document.getElementById(id).addEventListener("change", () => save().catch((err) => toast(err.message))));
+
+    async function boot() {
+      if (preview) document.getElementById("preview").classList.remove("hidden");
+      else {
+        applyTheme();
+        tg.ready();
+        tg.expand();
+        tg.onEvent("themeChanged", applyTheme);
+      }
+      state = await api("/api/state");
+      lang = state.config.language === "uk" ? "uk" : (tg && tg.initDataUnsafe && String(tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code || "").startsWith("uk") ? "uk" : "en");
+      if (lang !== state.config.language) await save({ language: lang });
+      else paint();
+    }
+
+    boot().catch((err) => toast(err.message));
+  </script>
+</body>
+</html>

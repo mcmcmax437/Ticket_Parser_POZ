@@ -4,7 +4,16 @@ import logging
 import re
 from datetime import date
 
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Update
+from telegram import (
+    BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    MenuButtonWebApp,
+    ReplyKeyboardMarkup,
+    Update,
+    WebAppInfo,
+)
 from telegram.error import BadRequest
 from telegram.ext import (
     Application,
@@ -28,13 +37,12 @@ from car_monitor import CAR_STATE_FILE, load_car_state, save_car_state
 from car_session import CarManager, get_car_manager
 from search_session import SearchManager, get_search_manager, SLOT_CONFIRMATIONS_KEY
 from services import SERVICE_ORDER
-from widget_sender import CAR_PANEL_ID, TICKET_PANEL_ID, refresh_status_card, upsert_panel_widget
+from webapp_server import start_webapp, webapp_url
+from widget_sender import refresh_status_card
 from ui_format import (
     FUEL_LABELS,
     GEARBOX_LABELS,
-    car_filter_summary,
     car_menu_html,
-    car_panel_state,
     car_search_line,
     case_button_label,
     format_date_range,
@@ -42,7 +50,6 @@ from ui_format import (
     main_menu_html,
     service_button_label,
     settings_html,
-    ticket_panel_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,8 +105,19 @@ def _manager(application: Application) -> SearchManager:
     return get_search_manager(application)
 
 
+def _app_url(tab: str = "tickets") -> str:
+    base = webapp_url()
+    if not base.startswith("https://"):
+        return ""
+    return f"{base}/?tab={tab}"
+
+
 def _reply_keyboard(lang: Language) -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
+    rows: list[list[KeyboardButton]] = []
+    url = _app_url()
+    if url:
+        rows.append([KeyboardButton(t("btn_open_app", lang), web_app=WebAppInfo(url=url))])
+    rows.extend(
         [
             [
                 KeyboardButton(t("btn_start_search", lang)),
@@ -113,10 +131,9 @@ def _reply_keyboard(lang: Language) -> ReplyKeyboardMarkup:
                 KeyboardButton(t("btn_car_menu", lang)),
                 KeyboardButton(t("btn_car_status", lang)),
             ],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
+        ]
     )
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
 
 def _case_row(lang: Language, selected: int) -> list[InlineKeyboardButton]:
@@ -284,36 +301,26 @@ def _car_content(application: Application, lang: Language) -> tuple[str, InlineK
 
 
 async def present_ticket(application: Application, chat_id: int) -> None:
-    lang = _lang()
-    manager = _manager(application)
-    active = manager.list_active()
-    settings = load_settings()
-    caption = (
-        f"{settings.service_name} · "
-        f"{format_date_range(load_user_config().get('notify_from_date'), load_user_config()['notify_before_date'])}"
-    )
-    await upsert_panel_widget(
-        application,
-        chat_id,
-        TICKET_PANEL_ID,
-        ticket_panel_state(lang, settings.service_name, active),
-        caption,
-        _inline_menu_keyboard(lang, manager),
-    )
+    del application, chat_id
 
 
 async def present_car(application: Application, chat_id: int) -> None:
+    del application, chat_id
+
+
+async def send_open_app(application: Application, chat_id: int, tab: str = "tickets") -> None:
     lang = _lang()
-    manager = _car_manager(application)
-    active = manager.list_active()
-    info = car_search_info(load_user_config(), car_search_key_from_config(load_user_config()))
-    await upsert_panel_widget(
-        application,
-        chat_id,
-        CAR_PANEL_ID,
-        car_panel_state(lang, active),
-        car_filter_summary(lang, info),
-        _car_keyboard(lang, manager, load_user_config()),
+    url = _app_url(tab)
+    if not url:
+        await application.bot.send_message(chat_id=chat_id, text=t("app_missing_url", lang))
+        return
+    label = t("btn_open_app", lang)
+    await application.bot.send_message(
+        chat_id=chat_id,
+        text=t("app_intro", lang),
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton(label, web_app=WebAppInfo(url=url))]]
+        ),
     )
 
 
@@ -689,7 +696,7 @@ async def _show_monitor_panel(
         keyboard = _settings_keyboard(lang, manager)
         await _force_send_panel(context, chat.id, text, keyboard)
     else:
-        await present_ticket(context.application, chat.id)
+        await send_open_app(context.application, chat.id)
     await _ensure_reply_keyboard(context, chat.id, lang)
 
     if update.callback_query:
@@ -707,9 +714,8 @@ async def _show_car_panel(
     if chat is None:
         return
 
-    lang = _lang()
-    await present_car(context.application, chat.id)
-    await _ensure_reply_keyboard(context, chat.id, lang)
+    await send_open_app(context.application, chat.id, "cars")
+    await _ensure_reply_keyboard(context, chat.id, _lang())
 
     if update.callback_query:
         try:
@@ -852,7 +858,7 @@ async def _send_main_menu(
     if chat is None:
         return
 
-    await present_ticket(context.application, chat.id)
+    await send_open_app(context.application, chat.id)
     await _ensure_reply_keyboard(context, chat.id, lang)
 
 
@@ -1167,7 +1173,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.answer()
         chat = update.effective_chat
         if chat is not None:
-            await present_car(context.application, chat.id)
+            await send_open_app(context.application, chat.id, "cars")
         return
 
     if data.startswith("prompt:car"):
@@ -1243,7 +1249,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.answer()
         chat = update.effective_chat
         if chat is not None:
-            await present_ticket(context.application, chat.id)
+            await send_open_app(context.application, chat.id, "tickets")
         return
 
     if data == "menu:settings":
@@ -1367,7 +1373,7 @@ async def _send_startup_menu(application: Application) -> None:
     settings = load_settings()
     lang = _lang()
     chat_id = int(settings.telegram_chat_id)
-    await present_ticket(application, chat_id)
+    await send_open_app(application, chat_id)
     await application.bot.send_message(
         chat_id=chat_id,
         text=t("main_intro", lang),
@@ -1442,7 +1448,16 @@ async def widget_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 def build_application(token: str) -> Application:
     async def post_init(application: Application) -> None:
+        start_webapp(application)
         await _set_bot_commands(application)
+        url = _app_url()
+        if url:
+            try:
+                await application.bot.set_chat_menu_button(
+                    menu_button=MenuButtonWebApp(text="App", web_app=WebAppInfo(url=url))
+                )
+            except Exception:
+                logger.exception("Could not set the Mini App menu button")
         try:
             await _send_startup_menu(application)
         except Exception:
