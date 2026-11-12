@@ -84,6 +84,7 @@
       padding: 10px 12px;
       font: inherit;
     }
+    select:disabled { opacity: 0.55; }
     .field { margin-bottom: 10px; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .chips button {
@@ -173,14 +174,14 @@
       <div class="card">
         <h2 id="lbl-car">Car</h2>
         <div class="grid">
-          <div class="field"><label id="lbl-make" for="make">Make</label><input id="make" placeholder="toyota" /></div>
-          <div class="field"><label id="lbl-model" for="model">Model</label><input id="model" placeholder="corolla" /></div>
-          <div class="field"><label id="lbl-year-from" for="year-from">Year from</label><input id="year-from" inputmode="numeric" placeholder="2018" /></div>
-          <div class="field"><label id="lbl-year-to" for="year-to">Year to</label><input id="year-to" inputmode="numeric" placeholder="2024" /></div>
-          <div class="field"><label id="lbl-price-from" for="price-from">Price from</label><input id="price-from" inputmode="numeric" placeholder="40000" /></div>
-          <div class="field"><label id="lbl-price-to" for="price-to">Price to</label><input id="price-to" inputmode="numeric" placeholder="50000" /></div>
-          <div class="field"><label id="lbl-mileage" for="mileage">Max km</label><input id="mileage" inputmode="numeric" placeholder="150000" /></div>
-          <div class="field"><label id="lbl-region" for="region">Region</label><input id="region" placeholder="wielkopolskie" /></div>
+          <div class="field"><label id="lbl-make" for="make">Make</label><select id="make"></select></div>
+          <div class="field"><label id="lbl-model" for="model">Model</label><select id="model"></select></div>
+          <div class="field"><label id="lbl-year-from" for="year-from">Year from</label><select id="year-from"></select></div>
+          <div class="field"><label id="lbl-year-to" for="year-to">Year to</label><select id="year-to"></select></div>
+          <div class="field"><label id="lbl-price-from" for="price-from">Price from</label><select id="price-from"></select></div>
+          <div class="field"><label id="lbl-price-to" for="price-to">Price to</label><select id="price-to"></select></div>
+          <div class="field"><label id="lbl-mileage" for="mileage">Max km</label><select id="mileage"></select></div>
+          <div class="field"><label id="lbl-region" for="region">Region</label><select id="region"></select></div>
         </div>
       </div>
       <div class="card">
@@ -217,9 +218,12 @@
         interval: "Check every", car: "The car", fuel: "Fuel", gear: "Gearbox",
         make: "Make", model: "Model", yearFrom: "Year from", yearTo: "Year to",
         priceFrom: "Price from, zł", priceTo: "Price to, zł", mileage: "Max mileage, km", region: "Region",
-        start: "Start search", stop: "Stop", startCar: "Start car search", any: "Any",
+        start: "Start search", stop: "Stop", startCar: "Start car search", any: "Any", choose: "Choose",
         saved: "Saved", badRange: "The start date has to be on or before the end date.",
-        needMake: "Enter the car make first."
+        badYear: "Year from has to be on or before year to.",
+        badPrice: "Price from has to be on or before price to.",
+        catalogError: "The car list did not load. Refresh the page.",
+        needMake: "Choose the car make first."
       },
       uk: {
         title: "Монітор Poznań", tickets: "Записи", cars: "Авто",
@@ -229,15 +233,19 @@
         interval: "Перевіряти кожні", car: "Авто", fuel: "Паливо", gear: "Коробка",
         make: "Марка", model: "Модель", yearFrom: "Рік від", yearTo: "Рік до",
         priceFrom: "Ціна від, zł", priceTo: "Ціна до, zł", mileage: "Макс. пробіг, км", region: "Регіон",
-        start: "Почати пошук", stop: "Стоп", startCar: "Шукати авто", any: "Будь-яке",
+        start: "Почати пошук", stop: "Стоп", startCar: "Шукати авто", any: "Будь-яке", choose: "Оберіть",
         saved: "Збережено", badRange: "Дата «від» має бути не пізніше дати «до».",
-        needMake: "Спочатку вкажіть марку."
+        badYear: "Рік «від» має бути не пізніше року «до».",
+        badPrice: "Ціна «від» має бути не більшою за ціну «до».",
+        catalogError: "Список авто не завантажився. Оновіть сторінку.",
+        needMake: "Спочатку оберіть марку."
       }
     };
 
     const tg = window.Telegram && window.Telegram.WebApp;
     const preview = !(tg && tg.initData);
     let state = null;
+    let options = null;
     let lang = "en";
     let tab = location.hash === "#cars" || new URLSearchParams(location.search).get("tab") === "cars" ? "cars" : "tickets";
 
@@ -336,14 +344,17 @@
       document.getElementById("from").value = cfg.notify_from_date || "";
       document.getElementById("until").value = cfg.notify_before_date || "";
       document.getElementById("interval").value = String(cfg.poll_interval_seconds);
-      document.getElementById("make").value = cfg.car_make || "";
-      document.getElementById("model").value = cfg.car_model || "";
-      document.getElementById("year-from").value = cfg.car_year_from || "";
-      document.getElementById("year-to").value = cfg.car_year_to || "";
-      document.getElementById("price-from").value = cfg.car_price_from || "";
-      document.getElementById("price-to").value = cfg.car_price_to || "";
-      document.getElementById("mileage").value = cfg.car_mileage_to || "";
-      document.getElementById("region").value = cfg.car_region || "";
+      const lists = options || { makes: [], models: {}, regions: [], years: [], prices: [], mileages: [] };
+      fillSelect("make", lists.makes, cfg.car_make, text("choose"));
+      const models = lists.models[cfg.car_make] || [];
+      fillSelect("model", models, cfg.car_model, text("any"));
+      document.getElementById("model").disabled = !cfg.car_make;
+      fillSelect("year-from", lists.years, cfg.car_year_from, text("any"));
+      fillSelect("year-to", lists.years, cfg.car_year_to, text("any"));
+      fillSelect("price-from", lists.prices, cfg.car_price_from, text("any"), amount);
+      fillSelect("price-to", lists.prices, cfg.car_price_to, text("any"), amount);
+      fillSelect("mileage", lists.mileages, cfg.car_mileage_to, text("any"), amount);
+      fillSelect("region", lists.regions, cfg.car_region, text("any"));
       document.getElementById("car-interval").value = String(cfg.car_poll_interval_seconds);
 
       const fuels = document.getElementById("fuels");
@@ -354,6 +365,30 @@
       gears.innerHTML = "";
       chip(gears, copy.any, !cfg.car_gearbox, () => save({ car_gearbox: "" }));
       state.gears.forEach((item) => chip(gears, item.label, item.id === cfg.car_gearbox, () => save({ car_gearbox: item.id })));
+    }
+
+    function amount(value) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toLocaleString("pl-PL") : value;
+    }
+
+    function fillSelect(id, items, current, emptyLabel, format) {
+      const select = document.getElementById(id);
+      select.innerHTML = "";
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = emptyLabel;
+      select.appendChild(empty);
+      (items || []).forEach((item) => {
+        const option = document.createElement("option");
+        const value = typeof item === "string" ? item : item.id;
+        const label = typeof item === "string" ? item : item.label;
+        option.value = value;
+        option.textContent = format ? format(value) : label;
+        select.appendChild(option);
+      });
+      const wanted = current == null ? "" : String(current);
+      select.value = Array.from(select.options).some((option) => option.value === wanted) ? wanted : "";
     }
 
     function formPatch() {
@@ -377,6 +412,17 @@
       const patch = Object.assign(formPatch(), extra || {});
       if (patch.notify_from_date && patch.notify_before_date && patch.notify_from_date > patch.notify_before_date) {
         toast(text("badRange"));
+        paint();
+        return;
+      }
+      if (patch.car_year_from && patch.car_year_to && Number(patch.car_year_from) > Number(patch.car_year_to)) {
+        toast(text("badYear"));
+        paint();
+        return;
+      }
+      if (patch.car_price_from && patch.car_price_to && Number(patch.car_price_from) > Number(patch.car_price_to)) {
+        toast(text("badPrice"));
+        paint();
         return;
       }
       state = await api("/api/state", patch);
@@ -403,8 +449,16 @@
     document.getElementById("stop-ticket").onclick = () => run("/api/ticket/stop");
     document.getElementById("start-car").onclick = () => run("/api/car/start", true);
     document.getElementById("stop-car").onclick = () => run("/api/car/stop");
-    ["from", "until", "interval", "make", "model", "year-from", "year-to", "price-from", "price-to", "mileage", "region", "car-interval"]
+    ["from", "until", "interval", "model", "year-from", "year-to", "price-from", "price-to", "mileage", "region", "car-interval"]
       .forEach((id) => document.getElementById(id).addEventListener("change", () => save().catch((err) => toast(err.message))));
+    document.getElementById("make").addEventListener("change", () => {
+      const make = document.getElementById("make").value;
+      const model = document.getElementById("model");
+      const models = (options && options.models && options.models[make]) || [];
+      if (!models.some((item) => item.id === model.value)) model.value = "";
+      model.disabled = !make;
+      save().catch((err) => toast(err.message));
+    });
 
     async function boot() {
       if (preview) document.getElementById("preview").classList.remove("hidden");
@@ -414,10 +468,11 @@
         tg.expand();
         tg.onEvent("themeChanged", applyTheme);
       }
-      state = await api("/api/state");
+      [options, state] = await Promise.all([api("/api/options"), api("/api/state")]);
       lang = state.config.language === "uk" ? "uk" : (tg && tg.initDataUnsafe && String(tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code || "").startsWith("uk") ? "uk" : "en");
+      paint();
+      if (options.error) toast(text("catalogError"));
       if (lang !== state.config.language) await save({ language: lang });
-      else paint();
     }
 
     boot().catch((err) => toast(err.message));

@@ -17,6 +17,7 @@ from car_config import car_search_key_from_config
 from car_session import get_car_manager
 from config import load_settings
 from config_store import load_user_config, update_user_config
+from otomoto_catalog import catalog_or_fallback
 from search_config import search_state_key_from_config
 from search_session import get_search_manager
 from services import SERVICES
@@ -128,6 +129,17 @@ def _clean_patch(body: dict) -> dict:
     if "car_poll_interval_seconds" in body:
         seconds = int(body["car_poll_interval_seconds"])
         changes["car_poll_interval_seconds"] = max(60, min(seconds, 86400))
+    current = load_user_config()
+    catalog = catalog_or_fallback()
+    make_ids = {item["id"] for item in catalog["makes"]}
+    region_ids = {item["id"] for item in catalog["regions"]}
+    list_ids = {
+        "car_year_from": set(catalog["years"]),
+        "car_year_to": set(catalog["years"]),
+        "car_price_from": set(catalog["prices"]),
+        "car_price_to": set(catalog["prices"]),
+        "car_mileage_to": set(catalog["mileages"]),
+    }
     for field in SLUG_FIELDS:
         if field not in body:
             continue
@@ -135,6 +147,18 @@ def _clean_patch(body: dict) -> dict:
         if slug and not re.fullmatch(r"[a-z0-9-]+", slug):
             raise ValueError(f"Invalid {field}")
         changes[field] = slug
+    make = str(changes.get("car_make", current.get("car_make") or ""))
+    if "car_make" in body and make_ids and make and make not in make_ids:
+        raise ValueError("Unknown make")
+    if "car_model" in body:
+        model = str(changes.get("car_model") or "")
+        allowed_models = {item["id"] for item in catalog["models"].get(make, [])}
+        if model and make_ids and model not in allowed_models:
+            raise ValueError("Unknown model")
+    if "car_region" in body:
+        region = str(changes.get("car_region") or "")
+        if region and region not in region_ids:
+            raise ValueError("Unknown region")
     for field in INT_FIELDS:
         if field not in body:
             continue
@@ -143,9 +167,24 @@ def _clean_patch(body: dict) -> dict:
             changes[field] = ""
             continue
         number = int(digits)
-        if field.startswith("car_year") and not 1900 <= number <= 2100:
-            raise ValueError("Year is out of range")
+        if str(number) not in list_ids[field]:
+            kind = "year" if field.startswith("car_year") else "price" if field.startswith("car_price") else "mileage"
+            raise ValueError(f"Choose a {kind} from the list")
         changes[field] = str(number)
+
+    def picked(field: str) -> str:
+        if field in changes:
+            return str(changes[field])
+        return str(current.get(field) or "")
+
+    if "car_year_from" in body or "car_year_to" in body:
+        start, end = picked("car_year_from"), picked("car_year_to")
+        if start and end and int(start) > int(end):
+            raise ValueError("Year from is after year to")
+    if "car_price_from" in body or "car_price_to" in body:
+        start, end = picked("car_price_from"), picked("car_price_to")
+        if start and end and int(start) > int(end):
+            raise ValueError("Price from is after price to")
     if "car_fuel_type" in body:
         fuel = str(body["car_fuel_type"])
         if fuel and fuel not in FUEL_LABELS:
@@ -221,11 +260,14 @@ class _Handler(BaseHTTPRequestHandler):
             page = (WEB_ROOT / "index.html").read_bytes()
             self._send(200, page, "text/html; charset=utf-8")
             return
-        if path != "/api/state":
+        if path not in {"/api/state", "/api/options"}:
             self._send(404, {"error": "Not found"}, "application/json")
             return
         if not self._authorized():
             self._send(401, {"error": "Open this page from the bot"}, "application/json")
+            return
+        if path == "/api/options":
+            self._send(200, catalog_or_fallback(), "application/json")
             return
         self._send(200, _public_state(), "application/json")
 
@@ -268,4 +310,5 @@ def start_webapp(application) -> None:
         logger.warning("Mini App server did not start on port %s: %s", port, exc)
         return
     threading.Thread(target=server.serve_forever, name="webapp", daemon=True).start()
+    threading.Thread(target=catalog_or_fallback, name="otomoto-catalog", daemon=True).start()
     logger.info("Mini App listening on http://0.0.0.0:%s", port)
