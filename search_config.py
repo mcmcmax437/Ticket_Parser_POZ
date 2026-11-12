@@ -42,6 +42,7 @@ class ActiveSearchInfo:
     notify_from_date: str
     notify_before_date: str
     num_cases: int
+    poll_interval_seconds: int
 
 
 def build_settings_from_config(config: dict, *, require_telegram: bool = True):
@@ -83,6 +84,7 @@ def active_search_info(settings, search_key: str) -> ActiveSearchInfo:
         notify_from_date=settings.notify_from_date.isoformat() if settings.notify_from_date else "",
         notify_before_date=settings.notify_before_date.isoformat(),
         num_cases=settings.num_cases,
+        poll_interval_seconds=int(settings.poll_interval_seconds),
     )
 
 

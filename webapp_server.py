@@ -56,18 +56,60 @@ def webapp_url() -> str:
     return os.getenv("WEBAPP_URL", "").strip().rstrip("/")
 
 
-def _public_state() -> dict:
+def _running_searches() -> tuple[bool, bool, list[dict], list[dict]]:
     config = load_user_config()
     app = _application
-    ticket_running = False
-    car_running = False
-    if app is not None:
-        ticket_running = get_search_manager(app).is_running(search_state_key_from_config(config))
-        car_running = get_car_manager(app).is_running(car_search_key_from_config(config))
+    if app is None:
+        return False, False, [], []
+    ticket_key = search_state_key_from_config(config)
+    car_key = car_search_key_from_config(config)
+    tickets = [
+        {
+            "key": item.search_key,
+            "service_key": item.service_key,
+            "notify_from_date": item.notify_from_date,
+            "notify_before_date": item.notify_before_date,
+            "num_cases": item.num_cases,
+            "poll_interval_seconds": item.poll_interval_seconds,
+            "current": item.search_key == ticket_key,
+        }
+        for item in get_search_manager(app).list_active()
+    ]
+    cars = [
+        {
+            "key": item.search_key,
+            "make": item.make,
+            "model": item.model,
+            "region": item.region,
+            "year_from": item.year_from,
+            "year_to": item.year_to,
+            "price_from": item.price_from,
+            "price_to": item.price_to,
+            "mileage_to": item.mileage_to,
+            "fuel_type": item.fuel_type,
+            "gearbox": item.gearbox,
+            "poll_interval_seconds": item.poll_interval_seconds,
+            "current": item.search_key == car_key,
+        }
+        for item in get_car_manager(app).list_active()
+    ]
+    return (
+        any(item["current"] for item in tickets),
+        any(item["current"] for item in cars),
+        tickets,
+        cars,
+    )
+
+
+def _public_state() -> dict:
+    config = load_user_config()
+    ticket_running, car_running, ticket_searches, car_searches = _running_searches()
     return {
         "config": {key: config.get(key, "") for key in PUBLIC_FIELDS},
         "ticket_running": ticket_running,
         "car_running": car_running,
+        "ticket_searches": ticket_searches,
+        "car_searches": car_searches,
         "services": [
             {"id": key, "en": service.names["en"], "uk": service.names["uk"]}
             for key, service in SERVICES.items()
@@ -204,15 +246,49 @@ def _call(coro):
     return asyncio.run_coroutine_threadsafe(coro, _loop).result(timeout=60)
 
 
+def _search_key(body: dict) -> str | None:
+    if body.get("key") in (None, ""):
+        return None
+    key = str(body["key"])
+    if len(key) > 500 or any(char in key for char in "\r\n\x00"):
+        raise ValueError("Unknown search")
+    return key
+
+
+async def _touch_card() -> None:
+    if _application is None:
+        return
+    try:
+        from i18n import normalize_language
+        from widget_sender import refresh_status_card
+
+        await refresh_status_card(
+            _application,
+            int(load_settings().telegram_chat_id),
+            normalize_language(str(load_user_config().get("language", "en"))),
+        )
+    except Exception:
+        logger.exception("Status card was not refreshed")
+
+
 async def _start_ticket() -> None:
     config = load_user_config()
     manager = get_search_manager(_application)
     if not manager.is_running(search_state_key_from_config(config)):
         await manager.start_config(config, _application, int(load_settings().telegram_chat_id))
+    await _touch_card()
 
 
-async def _stop_ticket() -> None:
-    await get_search_manager(_application).stop_config(load_user_config())
+async def _stop_ticket(body: dict) -> None:
+    manager = get_search_manager(_application)
+    key = _search_key(body)
+    if key:
+        await manager.stop_key(key)
+    elif body.get("all") is True:
+        await manager.stop_all()
+    else:
+        await manager.stop_config(load_user_config())
+    await _touch_card()
 
 
 async def _start_car() -> None:
@@ -222,10 +298,27 @@ async def _start_car() -> None:
     manager = get_car_manager(_application)
     if not manager.is_running(car_search_key_from_config(config)):
         await manager.start_config(config, _application, int(load_settings().telegram_chat_id))
+    await _touch_card()
 
 
-async def _stop_car() -> None:
-    await get_car_manager(_application).stop_config(load_user_config())
+async def _stop_car(body: dict) -> None:
+    manager = get_car_manager(_application)
+    key = _search_key(body)
+    if key:
+        await manager.stop_key(key)
+    elif body.get("all") is True:
+        await manager.stop_all()
+    else:
+        await manager.stop_config(load_user_config())
+    await _touch_card()
+
+
+async def _stop_everything() -> None:
+    if _application is None:
+        raise RuntimeError("Bot is not running")
+    await get_search_manager(_application).stop_all()
+    await get_car_manager(_application).stop_all()
+    await _touch_card()
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -285,11 +378,13 @@ class _Handler(BaseHTTPRequestHandler):
             elif path == "/api/ticket/start":
                 _call(_start_ticket())
             elif path == "/api/ticket/stop":
-                _call(_stop_ticket())
+                _call(_stop_ticket(body))
             elif path == "/api/car/start":
                 _call(_start_car())
             elif path == "/api/car/stop":
-                _call(_stop_car())
+                _call(_stop_car(body))
+            elif path == "/api/stop-all":
+                _call(_stop_everything())
             else:
                 self._send(404, {"error": "Not found"}, "application/json")
                 return
