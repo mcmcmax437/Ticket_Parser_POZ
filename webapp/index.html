@@ -175,6 +175,8 @@
     }
     select:disabled { opacity: 0.55; }
     .field { margin-bottom: 10px; }
+    .manual { margin-top: 6px; }
+    .window { margin: 8px 0 0; font-size: 13px; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .chips button {
       background: var(--bg);
@@ -278,11 +280,25 @@
           <div class="field"><label id="lbl-model" for="model">Model</label><select id="model"></select></div>
           <div class="field"><label id="lbl-year-from" for="year-from">Year from</label><select id="year-from"></select></div>
           <div class="field"><label id="lbl-year-to" for="year-to">Year to</label><select id="year-to"></select></div>
-          <div class="field"><label id="lbl-price-from" for="price-from">Price from</label><select id="price-from"></select></div>
-          <div class="field"><label id="lbl-price-to" for="price-to">Price to</label><select id="price-to"></select></div>
+          <div class="field">
+            <label id="lbl-price-from" for="price-from">Price from</label>
+            <select id="price-from"></select>
+            <input id="price-from-custom" class="manual" inputmode="numeric" autocomplete="off" enterkeyhint="done" />
+          </div>
+          <div class="field">
+            <label id="lbl-price-to" for="price-to">Price to</label>
+            <select id="price-to"></select>
+            <input id="price-to-custom" class="manual" inputmode="numeric" autocomplete="off" enterkeyhint="done" />
+          </div>
           <div class="field"><label id="lbl-mileage" for="mileage">Max km</label><select id="mileage"></select></div>
           <div class="field"><label id="lbl-region" for="region">Region</label><select id="region"></select></div>
         </div>
+        <div class="field">
+          <label id="lbl-tolerance" for="price-tolerance">Tolerance, %</label>
+          <input id="price-tolerance" inputmode="numeric" autocomplete="off" enterkeyhint="done" />
+        </div>
+        <div id="tolerance-chips" class="chips"></div>
+        <p id="price-window" class="window"></p>
       </div>
       <div class="card">
         <h2 id="lbl-fuel">Fuel</h2>
@@ -318,6 +334,11 @@
         interval: "Check every", car: "The car", fuel: "Fuel", gear: "Gearbox",
         make: "Make", model: "Model", yearFrom: "Year from", yearTo: "Year to",
         priceFrom: "Price from, zł", priceTo: "Price to, zł", mileage: "Max mileage, km", region: "Region",
+        manualPrice: "or type", tolerance: "Tolerance, %",
+        windowNone: "Set a price. The tolerance then widens those limits.",
+        windowExact: "Shown exactly:", windowWide: "Also considered:",
+        badTolerance: "Tolerance has to be from 0 to 100.",
+        badPriceValue: "Type a price from 1 to 20 000 000.",
         start: "Start search", startCar: "Start car search", addSearch: "Add this search",
         alreadyBtn: "This search is running", stop: "Stop", stopAll: "Stop all",
         confirmStopAll: "Stop every running search?",
@@ -348,6 +369,11 @@
         interval: "Перевіряти кожні", car: "Авто", fuel: "Паливо", gear: "Коробка",
         make: "Марка", model: "Модель", yearFrom: "Рік від", yearTo: "Рік до",
         priceFrom: "Ціна від, zł", priceTo: "Ціна до, zł", mileage: "Макс. пробіг, км", region: "Регіон",
+        manualPrice: "або вручну", tolerance: "Похибка, %",
+        windowNone: "Вкажіть ціну — похибка розширить ці межі.",
+        windowExact: "Покаже рівно:", windowWide: "Також розглянемо:",
+        badTolerance: "Похибка має бути від 0 до 100.",
+        badPriceValue: "Вкажіть ціну від 1 до 20 000 000.",
         start: "Почати пошук", startCar: "Шукати авто", addSearch: "Додати цей пошук",
         alreadyBtn: "Цей пошук уже йде", stop: "Стоп", stopAll: "Зупинити всі",
         confirmStopAll: "Зупинити всі пошуки?",
@@ -508,7 +534,10 @@
       const years = rangeLabel(item.year_from, item.year_to, "");
       const prices = rangeLabel(item.price_from, item.price_to, "zł");
       if (years) parts.push(years);
-      if (prices) parts.push(prices);
+      if (prices) {
+        const tolerance = Number(item.price_tolerance || 0);
+        parts.push(tolerance ? prices + " ±" + tolerance + "%" : prices);
+      }
       if (item.mileage_to) parts.push("≤ " + amount(item.mileage_to) + " " + text("km"));
       if (item.region) parts.push(lookup((options && options.regions) || [], item.region));
       const fuel = (state.fuels || []).find((entry) => entry.id === item.fuel_type);
@@ -654,6 +683,7 @@
       document.getElementById("lbl-year-to").textContent = copy.yearTo;
       document.getElementById("lbl-price-from").textContent = copy.priceFrom;
       document.getElementById("lbl-price-to").textContent = copy.priceTo;
+      document.getElementById("lbl-tolerance").textContent = copy.tolerance;
       document.getElementById("lbl-mileage").textContent = copy.mileage;
       document.getElementById("lbl-region").textContent = copy.region;
       document.getElementById("lbl-car-interval").textContent = copy.interval;
@@ -700,8 +730,9 @@
       document.getElementById("model").disabled = !cfg.car_make;
       fillSelect("year-from", lists.years, cfg.car_year_from, text("any"));
       fillSelect("year-to", lists.years, cfg.car_year_to, text("any"));
-      fillSelect("price-from", lists.prices, cfg.car_price_from, text("any"), amount);
-      fillSelect("price-to", lists.prices, cfg.car_price_to, text("any"), amount);
+      paintPrice("price-from", "price-from-custom", cfg.car_price_from);
+      paintPrice("price-to", "price-to-custom", cfg.car_price_to);
+      paintTolerance(cfg.car_price_tolerance);
       fillSelect("mileage", lists.mileages, cfg.car_mileage_to, text("any"), amount);
       fillSelect("region", lists.regions, cfg.car_region, text("any"));
       selectInterval("car-interval", cfg.car_poll_interval_seconds);
@@ -761,7 +792,84 @@
       select.value = Array.from(select.options).some((option) => option.value === wanted) ? wanted : "";
     }
 
+    function paintPrice(selectId, manualId, current) {
+      const lists = options || { prices: [] };
+      fillSelect(selectId, lists.prices, "", text("any"), amount);
+      const select = document.getElementById(selectId);
+      const manual = document.getElementById(manualId);
+      const wanted = current == null ? "" : String(current);
+      const known = Boolean(wanted) && Array.from(select.options).some((option) => option.value === wanted);
+      select.value = known ? wanted : "";
+      manual.value = wanted && !known ? wanted : "";
+      manual.placeholder = text("manualPrice");
+    }
+
+    function paintTolerance(current) {
+      const value = current == null || current === "" ? "0" : String(current);
+      const input = document.getElementById("price-tolerance");
+      input.value = value === "0" ? "" : value;
+      input.placeholder = "0";
+      const box = document.getElementById("tolerance-chips");
+      box.replaceChildren();
+      [0, 5, 10, 15, 20].forEach((step) => {
+        chip(box, step ? "±" + step + "%" : "0%", String(step) === String(Number(value) || 0), () => {
+          save({ car_price_tolerance: String(step) }).catch((err) => toast(err.message));
+        });
+      });
+      paintWindow();
+    }
+
+    function statedAmount(selectId, manualId) {
+      const typed = document.getElementById(manualId).value.replace(/\D/g, "");
+      if (typed) return Number(typed);
+      const selected = document.getElementById(selectId).value;
+      return selected ? Number(selected) : 0;
+    }
+
+    function widen(amount, percent, upper) {
+      if (!amount) return 0;
+      const delta = Math.floor((amount * percent + 50) / 100);
+      return upper ? amount + delta : Math.max(0, amount - delta);
+    }
+
+    function paintWindow() {
+      const node = document.getElementById("price-window");
+      const from = statedAmount("price-from", "price-from-custom");
+      const to = statedAmount("price-to", "price-to-custom");
+      const typed = document.getElementById("price-tolerance").value.replace(/\D/g, "");
+      const percent = typed ? Number(typed) : 0;
+      if (!from && !to) {
+        node.textContent = text("windowNone");
+        return;
+      }
+      const low = from ? widen(from, Math.min(percent, 100), false) : 0;
+      const high = to ? widen(to, Math.min(percent, 100), true) : 0;
+      const band = rangeLabel(low ? String(low) : "", high ? String(high) : "", "zł");
+      node.textContent = (percent ? text("windowWide") : text("windowExact")) + " " + band;
+    }
+
+    function readPrice(selectId, manualId) {
+      const typed = document.getElementById(manualId).value.replace(/\D/g, "");
+      if (typed) {
+        const number = Number(typed);
+        if (number < 1 || number > 20000000) return { error: true, value: "" };
+        return { error: false, value: String(number) };
+      }
+      return { error: false, value: document.getElementById(selectId).value.trim() };
+    }
+
+    function readTolerance() {
+      const typed = document.getElementById("price-tolerance").value.replace(/\D/g, "");
+      if (!typed) return { error: false, value: "0" };
+      const number = Number(typed);
+      if (number > 100) return { error: true, value: "" };
+      return { error: false, value: String(number) };
+    }
+
     function formPatch() {
+      const fromPrice = readPrice("price-from", "price-from-custom");
+      const toPrice = readPrice("price-to", "price-to-custom");
+      const tolerance = readTolerance();
       return {
         notify_from_date: document.getElementById("from").value,
         notify_before_date: document.getElementById("until").value,
@@ -770,16 +878,34 @@
         car_model: document.getElementById("model").value.trim(),
         car_year_from: document.getElementById("year-from").value.trim(),
         car_year_to: document.getElementById("year-to").value.trim(),
-        car_price_from: document.getElementById("price-from").value.trim(),
-        car_price_to: document.getElementById("price-to").value.trim(),
+        car_price_from: fromPrice.value,
+        car_price_to: toPrice.value,
+        car_price_tolerance: tolerance.value,
         car_mileage_to: document.getElementById("mileage").value.trim(),
         car_region: document.getElementById("region").value.trim(),
-        car_poll_interval_seconds: Number(document.getElementById("car-interval").value)
+        car_poll_interval_seconds: Number(document.getElementById("car-interval").value),
+        _priceError: fromPrice.error || toPrice.error,
+        _toleranceError: tolerance.error
       };
     }
 
     async function save(extra) {
-      const patch = Object.assign(formPatch(), extra || {});
+      const draft = formPatch();
+      const priceError = draft._priceError;
+      const toleranceError = draft._toleranceError;
+      delete draft._priceError;
+      delete draft._toleranceError;
+      if (priceError) {
+        toast(text("badPriceValue"));
+        paint();
+        return;
+      }
+      if (toleranceError && !(extra && Object.prototype.hasOwnProperty.call(extra, "car_price_tolerance"))) {
+        toast(text("badTolerance"));
+        paint();
+        return;
+      }
+      const patch = Object.assign(draft, extra || {});
       if (patch.notify_from_date && patch.notify_before_date && patch.notify_from_date > patch.notify_before_date) {
         toast(text("badRange"));
         paint();
@@ -861,6 +987,7 @@
           car_year_to: item.year_to,
           car_price_from: item.price_from,
           car_price_to: item.price_to,
+          car_price_tolerance: item.price_tolerance || "0",
           car_mileage_to: item.mileage_to,
           car_fuel_type: item.fuel_type,
           car_gearbox: item.gearbox,
@@ -884,8 +1011,22 @@
     document.getElementById("start-ticket").onclick = () => run("ticket").catch((err) => toast(err.message));
     document.getElementById("start-car").onclick = () => run("car").catch((err) => toast(err.message));
     document.getElementById("stop-all").onclick = askStopAll;
-    ["from", "until", "interval", "model", "year-from", "year-to", "price-from", "price-to", "mileage", "region", "car-interval"]
+    ["from", "until", "interval", "model", "year-from", "year-to", "mileage", "region", "car-interval"]
       .forEach((id) => document.getElementById(id).addEventListener("change", () => save().catch((err) => toast(err.message))));
+    function bindPrice(selectId, manualId) {
+      document.getElementById(selectId).addEventListener("change", () => {
+        document.getElementById(manualId).value = "";
+        save().catch((err) => toast(err.message));
+      });
+      const manual = document.getElementById(manualId);
+      manual.addEventListener("input", paintWindow);
+      manual.addEventListener("change", () => save().catch((err) => toast(err.message)));
+    }
+    bindPrice("price-from", "price-from-custom");
+    bindPrice("price-to", "price-to-custom");
+    const toleranceInput = document.getElementById("price-tolerance");
+    toleranceInput.addEventListener("input", paintWindow);
+    toleranceInput.addEventListener("change", () => save().catch((err) => toast(err.message)));
     document.getElementById("make").addEventListener("change", () => {
       const make = document.getElementById("make").value;
       const model = document.getElementById("model");

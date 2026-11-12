@@ -123,6 +123,14 @@ def interval_button_label(seconds: int, selected: int) -> str:
     return f"{prefix}{label}"
 
 
+def _price_part(info: CarSearchInfo) -> str:
+    window = f"{_group(info.price_from or '…')}–{_group(info.price_to or '…')} zł"
+    tolerance = str(info.price_tolerance or "").strip()
+    if tolerance and tolerance != "0":
+        window += f" ±{tolerance}%"
+    return window
+
+
 def _group(value: object) -> str:
     text = str(value or "").strip()
     if not text.isdigit():
@@ -135,7 +143,7 @@ def car_filter_summary(lang: Language, info: CarSearchInfo) -> str:
     if info.year_from or info.year_to:
         parts.append(f"{info.year_from or '…'}–{info.year_to or '…'}")
     if info.price_from or info.price_to:
-        parts.append(f"{_group(info.price_from or '…')}–{_group(info.price_to or '…')} zł")
+        parts.append(_price_part(info))
     if info.mileage_to:
         parts.append(f"≤ {_group(info.mileage_to)} km")
     if info.fuel_type:
@@ -493,7 +501,7 @@ def car_panel_state(lang: Language, active_cars: list[CarSearchInfo]) -> str:
         year = f"{info.year_from or '…'} – {info.year_to or '…'}"
     price = "—"
     if info.price_from or info.price_to:
-        price = f"{_group(info.price_from or '…')} – {_group(info.price_to or '…')} zł"
+        price = _price_part(info)
     return json.dumps(
         {
             "title": _plain(t("car_title_html", lang)),

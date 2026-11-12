@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl
 
-from car_config import car_search_key_from_config
+from car_config import car_search_key_from_config, parse_price, parse_tolerance
 from car_session import get_car_manager
 from config import load_settings
 from config_store import load_user_config, update_user_config
@@ -40,13 +40,15 @@ PUBLIC_FIELDS = (
     "car_year_to",
     "car_price_from",
     "car_price_to",
+    "car_price_tolerance",
     "car_mileage_to",
     "car_fuel_type",
     "car_gearbox",
     "car_poll_interval_seconds",
 )
 SLUG_FIELDS = {"car_make", "car_model", "car_region"}
-INT_FIELDS = {"car_year_from", "car_year_to", "car_price_from", "car_price_to", "car_mileage_to"}
+INT_FIELDS = {"car_year_from", "car_year_to", "car_mileage_to"}
+PRICE_FIELDS = {"car_price_from", "car_price_to"}
 
 _application = None
 _loop: asyncio.AbstractEventLoop | None = None
@@ -85,6 +87,7 @@ def _running_searches() -> tuple[bool, bool, list[dict], list[dict]]:
             "year_to": item.year_to,
             "price_from": item.price_from,
             "price_to": item.price_to,
+            "price_tolerance": item.price_tolerance,
             "mileage_to": item.mileage_to,
             "fuel_type": item.fuel_type,
             "gearbox": item.gearbox,
@@ -178,8 +181,6 @@ def _clean_patch(body: dict) -> dict:
     list_ids = {
         "car_year_from": set(catalog["years"]),
         "car_year_to": set(catalog["years"]),
-        "car_price_from": set(catalog["prices"]),
-        "car_price_to": set(catalog["prices"]),
         "car_mileage_to": set(catalog["mileages"]),
     }
     for field in SLUG_FIELDS:
@@ -210,9 +211,15 @@ def _clean_patch(body: dict) -> dict:
             continue
         number = int(digits)
         if str(number) not in list_ids[field]:
-            kind = "year" if field.startswith("car_year") else "price" if field.startswith("car_price") else "mileage"
+            kind = "year" if field.startswith("car_year") else "mileage"
             raise ValueError(f"Choose a {kind} from the list")
         changes[field] = str(number)
+    for field in PRICE_FIELDS:
+        if field not in body:
+            continue
+        changes[field] = parse_price(body[field])
+    if "car_price_tolerance" in body:
+        changes["car_price_tolerance"] = parse_tolerance(body["car_price_tolerance"])
 
     def picked(field: str) -> str:
         if field in changes:
