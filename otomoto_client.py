@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
 import requests
 from lxml.html import document_fromstring
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.otomoto.pl"
 CATEGORY = "osobowe"
@@ -12,6 +15,20 @@ MAX_PAGES = 8
 
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "plugin-hybrid", "electric", "petrol-lpg")
 GEARBOXES = ("manual", "automatic")
+
+# Card text is the Polish label, while the search param is the otomoto slug.
+_FUEL_ACCEPTED = {
+    "petrol": {"petrol", "benzyna"},
+    "diesel": {"diesel"},
+    "hybrid": {"hybrid", "hybryda"},
+    "plugin-hybrid": {"plugin-hybrid", "plugin hybrid", "hybryda plug-in"},
+    "electric": {"electric", "elektryczny", "elektriska"},
+    "petrol-lpg": {"petrol-lpg", "petrol lpg", "benzyna lpg"},
+}
+_GEAR_ACCEPTED = {
+    "manual": {"manual", "manualna"},
+    "automatic": {"automatic", "automatyczna"},
+}
 
 
 @dataclass(frozen=True)
@@ -43,6 +60,34 @@ class CarSearchParams:
 def _number(text: str) -> int | None:
     digits = re.sub(r"\D", "", text)
     return int(digits) if digits else None
+
+
+def _norm(value: str) -> str:
+    cleaned = value.lower().replace("(", " ").replace(")", " ").replace("+", " ").replace("-", " ")
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def listing_within_filters(item: CarListing, params: CarSearchParams) -> bool:
+    """Otomoto sometimes renders offers the price query did not ask for. Check the parsed offer."""
+    if params.price_from is not None and (item.price is None or item.price < params.price_from):
+        return False
+    if params.price_to is not None and (item.price is None or item.price > params.price_to):
+        return False
+    if params.year_from is not None and (item.year is None or item.year < params.year_from):
+        return False
+    if params.year_to is not None and (item.year is None or item.year > params.year_to):
+        return False
+    if params.mileage_to is not None and (item.mileage is None or item.mileage > params.mileage_to):
+        return False
+    if params.fuel_type:
+        accepted = {_norm(value) for value in _FUEL_ACCEPTED.get(params.fuel_type, {params.fuel_type})}
+        if _norm(item.fuel_type) not in accepted:
+            return False
+    if params.gearbox:
+        accepted = {_norm(value) for value in _GEAR_ACCEPTED.get(params.gearbox, {params.gearbox})}
+        if _norm(item.gearbox) not in accepted:
+            return False
+    return True
 
 
 class OtomotoClient:
@@ -100,12 +145,24 @@ class OtomotoClient:
             seen.update(item.listing_id for item in fresh)
             listings.extend(fresh)
 
-        return self.filter_make_model(listings, params)
+        matched = self.filter_make_model(listings, params)
+        kept = [item for item in matched if listing_within_filters(item, params)]
+        if len(kept) != len(matched):
+            logger.info(
+                "Dropped %d offers outside the car filters | make=%s | model=%s",
+                len(matched) - len(kept),
+                params.make,
+                params.model,
+            )
+        return kept
 
     def parse_listings(self, body: str) -> list[CarListing]:
         tree = document_fromstring(body)
         listings: list[CarListing] = []
-        for article in tree.xpath("//article[@data-id]"):
+        articles = tree.xpath("//*[@data-testid='search-results']//article[@data-id]")
+        if not articles:
+            articles = tree.xpath("//article[@data-id]")
+        for article in articles:
             links = [
                 a
                 for a in article.xpath('.//a[@data-nextlink="false"]')
