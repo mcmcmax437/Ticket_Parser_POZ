@@ -8,6 +8,7 @@ import zlib
 
 import requests
 from telegram import InputFile
+from telegram.error import RetryAfter
 from telegram.ext import Application
 
 from i18n import Language
@@ -120,6 +121,8 @@ async def _send_car_card(application: Application, chat_id: int, caption: str, i
                 parse_mode="HTML",
             )
             return
+        except RetryAfter:
+            raise
         except Exception:
             logger.warning("Car photo was not sent | id=%s", item.listing_id, exc_info=True)
     await application.bot.send_message(
@@ -130,17 +133,32 @@ async def _send_car_card(application: Application, chat_id: int, caption: str, i
     )
 
 
-async def send_car_cards(application: Application, chat_id: int, lang: Language, new_listings, price_drops) -> None:
+async def _deliver_car_card(application: Application, chat_id: int, caption: str, item) -> bool:
+    for _attempt in range(4):
+        try:
+            await _send_car_card(application, chat_id, caption, item)
+            return True
+        except RetryAfter as exc:
+            await asyncio.sleep(float(exc.retry_after) + 0.5)
+        except Exception:
+            logger.exception("Car card was not sent | id=%s", item.listing_id)
+            return False
+    logger.error("Car card was not sent after retries | id=%s", item.listing_id)
+    return False
+
+
+async def send_car_cards(application: Application, chat_id: int, lang: Language, new_listings, price_drops):
+    sent_new = []
+    sent_drops = []
     for item in new_listings:
-        try:
-            await _send_car_card(application, chat_id, car_card_caption(lang, item), item)
-        except Exception:
-            logger.exception("Car card was not sent | id=%s", item.listing_id)
+        if await _deliver_car_card(application, chat_id, car_card_caption(lang, item), item):
+            sent_new.append(item)
+        await asyncio.sleep(0.35)
     for item, previous in price_drops:
-        try:
-            await _send_car_card(application, chat_id, car_card_caption(lang, item, previous), item)
-        except Exception:
-            logger.exception("Car card was not sent | id=%s", item.listing_id)
+        if await _deliver_car_card(application, chat_id, car_card_caption(lang, item, previous), item):
+            sent_drops.append((item, previous))
+        await asyncio.sleep(0.35)
+    return sent_new, sent_drops
 
 
 async def send_car_alert_widget(

@@ -6,9 +6,16 @@ import logging
 from telegram.ext import Application
 
 from car_config import car_search_info, car_search_key_from_config, car_search_params_from_config
-from car_monitor import CAR_STATE_FILE, find_new_listings, find_price_drops, load_car_state, save_car_state
+from car_monitor import (
+    CAR_STATE_FILE,
+    find_new_listings,
+    find_price_drops,
+    load_car_state,
+    remember_shown,
+    save_car_state,
+)
 from i18n import normalize_language, t
-from otomoto_client import OtomotoClient
+from otomoto_client import CarListing, OtomotoClient
 from widget_sender import refresh_status_card, send_car_cards
 
 logger = logging.getLogger(__name__)
@@ -34,13 +41,9 @@ class CarWorker:
         if self.is_running:
             return
 
-        client = OtomotoClient()
-        current = await asyncio.to_thread(client.get_listings, self.params)
-        self.known = {item.listing_id: item.price for item in current}
-        save_car_state(CAR_STATE_FILE, self.search_key, current)
-
+        self.known = load_car_state(CAR_STATE_FILE, self.search_key)
         logger.info(
-            "Car search STARTED | key=%s | baseline=%d",
+            "Car search STARTED | key=%s | already_shown=%d",
             self.search_key,
             len(self.known),
         )
@@ -67,39 +70,55 @@ class CarWorker:
         self.task = None
         self.stop_event = None
 
+    async def _publish(self, application: Application, chat_id: int, current: list[CarListing]) -> None:
+        new_listings = find_new_listings(current, self.known)
+        price_drops = find_price_drops(current, self.known)
+        sent_new: list[CarListing] = []
+        sent_drops: list[tuple[CarListing, int]] = []
+        if new_listings or price_drops:
+            sent_new, sent_drops = await send_car_cards(
+                application,
+                chat_id,
+                self.language,
+                new_listings,
+                price_drops,
+            )
+            logger.info(
+                "Car hits | key=%s | new=%d | drops=%d",
+                self.search_key,
+                len(sent_new),
+                len(sent_drops),
+            )
+        failed = {item.listing_id for item in new_listings}
+        failed.update(item.listing_id for item, _previous in price_drops)
+        failed.difference_update(item.listing_id for item in sent_new)
+        failed.difference_update(item.listing_id for item, _previous in sent_drops)
+        remembered = remember_shown(self.known, current)
+        for listing_id in failed:
+            if listing_id in self.known:
+                remembered[listing_id] = self.known[listing_id]
+            else:
+                remembered.pop(listing_id, None)
+        self.known = remembered
+        save_car_state(CAR_STATE_FILE, self.search_key, self.known)
+
     async def _loop(self, application: Application, chat_id: int) -> None:
         try:
+            first_check = True
             while self.stop_event and not self.stop_event.is_set():
-                for _ in range(self.poll_interval_seconds):
-                    if self.stop_event.is_set():
-                        break
-                    await asyncio.sleep(1)
+                if not first_check:
+                    for _ in range(self.poll_interval_seconds):
+                        if self.stop_event.is_set():
+                            break
+                        await asyncio.sleep(1)
+                first_check = False
                 if self.stop_event.is_set():
                     break
 
                 client = OtomotoClient()
                 try:
                     current = await asyncio.to_thread(client.get_listings, self.params)
-                    new_listings = find_new_listings(current, self.known)
-                    price_drops = find_price_drops(current, self.known)
-
-                    if new_listings or price_drops:
-                        await send_car_cards(
-                            application,
-                            chat_id,
-                            self.language,
-                            new_listings,
-                            price_drops,
-                        )
-                        logger.info(
-                            "Car hits | key=%s | new=%d | drops=%d",
-                            self.search_key,
-                            len(new_listings),
-                            len(price_drops),
-                        )
-
-                    self.known = {item.listing_id: item.price for item in current}
-                    save_car_state(CAR_STATE_FILE, self.search_key, current)
+                    await self._publish(application, chat_id, current)
                     await refresh_status_card(application, chat_id, self.language)
                 except Exception as exc:
                     logger.exception("Car search check failed for %s", self.search_key)

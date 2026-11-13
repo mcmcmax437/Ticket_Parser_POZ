@@ -29,6 +29,16 @@ def find_price_drops(current: list[CarListing], known: dict[str, int | None]) ->
     return drops
 
 
+def remember_shown(
+    known: dict[str, int | None],
+    listings: list[CarListing],
+) -> dict[str, int | None]:
+    remembered = dict(known)
+    for item in listings:
+        remembered[item.listing_id] = item.price
+    return remembered
+
+
 def load_car_state(path: Path, search_key: str) -> dict[str, int | None]:
     if not path.exists():
         return {}
@@ -36,6 +46,9 @@ def load_car_state(path: Path, search_key: str) -> dict[str, int | None]:
         data = json.loads(path.read_text(encoding="utf-8"))
         by_search = data.get("by_search", {})
         entry = by_search.get(search_key, {})
+        # Older files recorded a silent baseline. Those offers were never sent.
+        if not entry.get("delivered"):
+            return {}
         listings = entry.get("listings", {})
         if not isinstance(listings, dict):
             return {}
@@ -48,7 +61,7 @@ def load_car_state(path: Path, search_key: str) -> dict[str, int | None]:
         return {}
 
 
-def save_car_state(path: Path, search_key: str, listings: list[CarListing]) -> None:
+def save_car_state(path: Path, search_key: str, listings: list[CarListing] | dict[str, int | None]) -> None:
     existing: dict = {}
     if path.exists():
         try:
@@ -59,8 +72,16 @@ def save_car_state(path: Path, search_key: str, listings: list[CarListing]) -> N
     by_search = existing.get("by_search", {})
     if not isinstance(by_search, dict):
         by_search = {}
+    if isinstance(listings, dict):
+        stored = {
+            str(key): (int(value) if isinstance(value, int) else None)
+            for key, value in listings.items()
+        }
+    else:
+        stored = {item.listing_id: item.price for item in listings}
     by_search[search_key] = {
-        "listings": {item.listing_id: item.price for item in listings},
+        "listings": stored,
+        "delivered": True,
         "last_check": datetime.now(UTC).isoformat(),
     }
 
