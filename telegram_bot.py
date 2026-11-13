@@ -33,7 +33,14 @@ from qmatic_client import QmaticClient, TimeSlot
 from search_log import log_search_result
 from search_config import search_state_key_from_config
 from car_config import car_search_info, car_search_key_from_config, parse_price, parse_tolerance
-from car_monitor import CAR_STATE_FILE, dismiss_listing, listing_id_ok, load_car_state, save_car_state
+from car_monitor import (
+    CAR_STATE_FILE,
+    clear_car_cache,
+    dismiss_listing,
+    listing_id_ok,
+    load_car_state,
+    save_car_state,
+)
 from car_session import CarManager, get_car_manager
 from search_session import SearchManager, get_search_manager, SLOT_CONFIRMATIONS_KEY
 from services import SERVICE_ORDER
@@ -290,6 +297,9 @@ def _car_keyboard(lang: Language, manager, config: dict) -> InlineKeyboardMarkup
             [
                 InlineKeyboardButton(t("btn_car_status", lang), callback_data="action:car_status"),
                 InlineKeyboardButton(t("btn_car_reset", lang), callback_data="action:car_reset"),
+            ],
+            [
+                InlineKeyboardButton(t("btn_car_reset_all", lang), callback_data="action:car_reset_all"),
             ],
             [
                 InlineKeyboardButton(t("btn_car_main_menu", lang), callback_data="menu:main"),
@@ -1245,6 +1255,37 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.answer(t("car_reset_done", lang))
         if query.message:
             await _refresh_car_panel(context, query.message.chat_id)
+        return
+
+    if data == "action:car_reset_all":
+        await query.answer()
+        if query.message:
+            await query.message.reply_text(
+                t("car_cache_confirm", lang),
+                reply_markup=InlineKeyboardMarkup(
+                    [[
+                        InlineKeyboardButton(
+                            t("btn_car_reset_all_yes", lang),
+                            callback_data="action:car_reset_all_yes",
+                        ),
+                        InlineKeyboardButton(t("btn_cancel", lang), callback_data="action:car_reset_all_no"),
+                    ]]
+                ),
+            )
+        return
+
+    if data == "action:car_reset_all_yes":
+        get_car_manager(context.application).forget_tracked()
+        clear_car_cache(CAR_STATE_FILE)
+        await query.answer(t("car_cache_cleared", lang))
+        if query.message:
+            await query.edit_message_text(t("car_cache_cleared", lang))
+        return
+
+    if data == "action:car_reset_all_no":
+        await query.answer()
+        if query.message:
+            await query.edit_message_text(t("car_cache_kept", lang))
         return
 
     if data.startswith("set:car_fuel:") or data.startswith("set:car_gearbox:"):

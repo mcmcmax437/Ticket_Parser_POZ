@@ -192,6 +192,23 @@ TRANSLATIONS: dict[str, dict[Language, str]] = {
     "car_hidden": {"en": "I won't show this car again.", "uk": "Більше не показуватиму."},
     "car_status_title": {"en": "🚗 <b>Car status</b>", "uk": "🚗 <b>Car status</b>"},
     "car_reset_done": {"en": "🔄 Tracked listings cleared.", "uk": "🔄 Tracked listings cleared."},
+    "car_search_failed": {
+        "en": "{site} did not answer. No cars from this check.",
+        "uk": "{site} не відповів. Цього разу авто не знайдено.",
+    },
+    "car_search_partial": {
+        "en": "{site} stopped answering on page {page}. The {count} cars found before that are already checked.",
+        "uk": "{site} перестав відповідати на сторінці {page}. Уже перевірив {count} авто, знайдених до помилки.",
+    },
+    "car_cache_confirm": {
+        "en": "Clear all saved cars, including hidden ones? The next check will send the current offers again.",
+        "uk": "Скинути весь кеш авто, включно зі схованими? Наступна перевірка знову надішле всі поточні оголошення.",
+    },
+    "car_cache_cleared": {
+        "en": "Car memory cleared. The next check sends the cars it finds again.",
+        "uk": "Кеш авто скинуто. Наступна перевірка знову надішле знайдені машини.",
+    },
+    "car_cache_kept": {"en": "Car memory kept.", "uk": "Кеш авто залишено."},
     "car_make_required": {"en": "Set the car make first.", "uk": "Set the car make first."},
     "car_search_already_running": {"en": "This car search is already running.", "uk": "This car search is already running."},
     "car_search_not_running": {"en": "Car search is not running.", "uk": "Car search is not running."},
@@ -225,6 +242,9 @@ TRANSLATIONS: dict[str, dict[Language, str]] = {
     "btn_car_stop": {"en": "🔴 Stop car search", "uk": "🔴 Stop car search"},
     "btn_car_main_menu": {"en": "⬅️ Ticket menu", "uk": "⬅️ Ticket menu"},
     "btn_car_reset": {"en": "🔄 Clear tracked listings", "uk": "🔄 Clear tracked listings"},
+    "btn_car_reset_all": {"en": "🧹 Clear all car memory", "uk": "🧹 Скинути весь кеш авто"},
+    "btn_car_reset_all_yes": {"en": "Yes, clear it", "uk": "Так, скинути"},
+    "btn_cancel": {"en": "Cancel", "uk": "Скасувати"},
     "btn_car_any": {"en": "Any", "uk": "Будь-яке"},
     "field_make": {"en": "Make", "uk": "Марка"},
     "field_model": {"en": "Model", "uk": "Модель"},

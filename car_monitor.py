@@ -92,6 +92,13 @@ def save_car_state(path: Path, search_key: str, listings: list[CarListing] | dic
     path.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def clear_car_cache(path: Path) -> None:
+    path.write_text(
+        json.dumps({"by_search": {}, "dismissed": []}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def load_dismissed(path: Path) -> set[str]:
     if not path.exists():
         return set()

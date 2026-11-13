@@ -18,7 +18,7 @@ from car_monitor import (
 )
 from i18n import normalize_language, t
 from blocket_client import BlocketClient
-from otomoto_client import CarListing, OtomotoClient
+from otomoto_client import CarListing, IncompleteSearch, OtomotoClient
 from widget_sender import refresh_status_card, send_car_cards
 
 logger = logging.getLogger(__name__)
@@ -33,8 +33,12 @@ class CarWorker:
         self.poll_interval_seconds = int(config["car_poll_interval_seconds"])
         self.language = normalize_language(str(config.get("language", "en")))
         self.known: dict[str, int | None] = {}
+        self.manager: CarManager | None = None
         self.task: asyncio.Task | None = None
         self.stop_event: asyncio.Event | None = None
+
+    def _epoch(self) -> int:
+        return self.manager.cache_epoch if self.manager is not None else 0
 
     @property
     def is_running(self) -> bool:
@@ -74,6 +78,7 @@ class CarWorker:
         self.stop_event = None
 
     async def _publish(self, application: Application, chat_id: int, current: list[CarListing]) -> None:
+        epoch = self._epoch()
         dismissed = load_dismissed(CAR_STATE_FILE)
         new_listings = [
             item for item in find_new_listings(current, self.known) if item.listing_id not in dismissed
@@ -108,7 +113,27 @@ class CarWorker:
             else:
                 remembered.pop(listing_id, None)
         self.known = remembered
+        if self._epoch() != epoch:
+            self.known = {}
+            return
         save_car_state(CAR_STATE_FILE, self.search_key, self.known)
+
+    async def _notify_failure(
+        self,
+        application: Application,
+        chat_id: int,
+        page: int | None,
+        count: int,
+    ) -> None:
+        site = "Blocket" if self.params.source == "blocket" else "Otomoto"
+        if page and count:
+            text = t("car_search_partial", self.language, site=site, page=page, count=count)
+        else:
+            text = t("car_search_failed", self.language, site=site)
+        try:
+            await application.bot.send_message(chat_id=chat_id, text=text)
+        except Exception:
+            logger.exception("Failed to send car error message")
 
     async def _loop(self, application: Application, chat_id: int) -> None:
         try:
@@ -124,19 +149,21 @@ class CarWorker:
                     break
 
                 client = BlocketClient() if self.params.source == "blocket" else OtomotoClient()
+                failed_page: int | None = None
                 try:
                     current = await asyncio.to_thread(client.get_listings, prices_for_query(self.params))
+                except IncompleteSearch as exc:
+                    current = list(exc.listings)
+                    failed_page = exc.page
+                except Exception:
+                    logger.exception("Car search check failed for %s", self.search_key)
+                    await self._notify_failure(application, chat_id, page=None, count=0)
+                    continue
+                if current:
                     await self._publish(application, chat_id, current)
                     await refresh_status_card(application, chat_id, self.language)
-                except Exception as exc:
-                    logger.exception("Car search check failed for %s", self.search_key)
-                    try:
-                        await application.bot.send_message(
-                            chat_id=chat_id,
-                            text=f"{t('notify_error_title', self.language)}\n{exc}",
-                        )
-                    except Exception:
-                        logger.exception("Failed to send car error message")
+                if failed_page is not None:
+                    await self._notify_failure(application, chat_id, failed_page, len(current))
         except asyncio.CancelledError:
             logger.info("Car search cancelled | key=%s", self.search_key)
             raise
@@ -145,6 +172,12 @@ class CarWorker:
 class CarManager:
     def __init__(self) -> None:
         self._workers: dict[str, CarWorker] = {}
+        self.cache_epoch = 0
+
+    def forget_tracked(self) -> None:
+        self.cache_epoch += 1
+        for worker in self._workers.values():
+            worker.known = {}
 
     @property
     def active_count(self) -> int:
@@ -182,8 +215,10 @@ class CarManager:
             worker = self._workers.get(key)
             if worker and worker.is_running:
                 continue
-            self._workers[key] = CarWorker(key, cfg)
-            await self._workers[key].start(application, chat_id)
+            worker = CarWorker(key, cfg)
+            worker.manager = self
+            self._workers[key] = worker
+            await worker.start(application, chat_id)
         return keys
 
     async def stop_key(self, search_key: str) -> bool:
