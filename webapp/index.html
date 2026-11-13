@@ -188,6 +188,11 @@
     .actions button { border-radius: 12px; padding: 12px; font-weight: 700; }
     .actions button:disabled { opacity: 0.55; cursor: default; }
     .go { background: var(--btn); color: var(--btn-text); }
+    .actions button.reset {
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid var(--line);
+    }
     .hint { margin: 8px 2px 0; color: var(--hint); font-size: 13px; }
     .hidden { display: none; }
     .toast {
@@ -331,6 +336,7 @@
       </div>
       <div class="actions">
         <button type="button" class="go" id="start-car">Start car search</button>
+        <button type="button" class="reset" id="reset-cars">Clear all car memory</button>
       </div>
       <p id="hint-car" class="hint"></p>
     </section>
@@ -358,6 +364,9 @@
         start: "Start search", startCar: "Start car search", addSearch: "Add this search",
         alreadyBtn: "This search is running", stop: "Stop", stopAll: "Stop all",
         confirmStopAll: "Stop every running search?",
+        resetCars: "Clear all car memory",
+        confirmResetCars: "Clear all saved cars, including hidden ones? The next check will send the current offers again.",
+        cacheCleared: "Car memory cleared. The next check sends the cars it finds again.",
         any: "Any", choose: "Choose",
         saved: "Saved", started: "Search started. It keeps running while you set up another.",
         stopped: "Search stopped.", stoppedAll: "All searches stopped.",
@@ -397,6 +406,9 @@
         start: "Почати пошук", startCar: "Шукати авто", addSearch: "Додати цей пошук",
         alreadyBtn: "Цей пошук уже йде", stop: "Стоп", stopAll: "Зупинити всі",
         confirmStopAll: "Зупинити всі пошуки?",
+        resetCars: "Скинути весь кеш авто",
+        confirmResetCars: "Скинути весь кеш авто, включно зі схованими? Наступна перевірка знову надішле всі поточні оголошення.",
+        cacheCleared: "Кеш авто скинуто. Наступна перевірка знову надішле знайдені машини.",
         any: "Будь-яке", choose: "Оберіть",
         saved: "Збережено", started: "Пошук запущено. Він працює, поки ви налаштовуєте наступний.",
         stopped: "Пошук зупинено.", stoppedAll: "Усі пошуки зупинено.",
@@ -773,6 +785,7 @@
       empty.textContent = copy.runningHint;
       empty.classList.toggle("hidden", total > 0);
       document.getElementById("stop-all").textContent = copy.stopAll;
+      document.getElementById("reset-cars").textContent = copy.resetCars;
       document.getElementById("stop-all").classList.toggle("hidden", total < 2);
 
       const searches = visibleSearches();
@@ -1148,13 +1161,32 @@
       toast(text("stoppedAll"));
     }
 
-    function askStopAll() {
-      const message = text("confirmStopAll");
+    async function resetCars() {
+      const next = await commit(() => api("/api/car/reset-cache", {}));
+      if (!next) return;
+      state = next;
+      toast(text("cacheCleared"));
+    }
+
+    function confirmThen(message, action) {
+      const run = (ok) => { if (ok) action().catch((err) => toast(err.message)); };
       if (tg && tg.showConfirm) {
-        tg.showConfirm(message, (ok) => { if (ok) stopAll().catch((err) => toast(err.message)); });
-        return;
+        try {
+          tg.showConfirm(message, run);
+          return;
+        } catch (err) {
+          // The page script is present outside Telegram, but confirm is not.
+        }
       }
-      if (window.confirm(message)) stopAll().catch((err) => toast(err.message));
+      run(window.confirm(message));
+    }
+
+    function askResetCars() {
+      confirmThen(text("confirmResetCars"), resetCars);
+    }
+
+    function askStopAll() {
+      confirmThen(text("confirmStopAll"), stopAll);
     }
 
     async function openSearch(item) {
@@ -1193,6 +1225,7 @@
     document.getElementById("tab-cars").onclick = () => { tab = "cars"; drawnKey = ""; paint(); };
     document.getElementById("start-ticket").onclick = () => run("ticket").catch((err) => toast(err.message));
     document.getElementById("start-car").onclick = () => run("car").catch((err) => toast(err.message));
+    document.getElementById("reset-cars").onclick = askResetCars;
     document.getElementById("stop-all").onclick = askStopAll;
     ["from", "until", "interval", "model", "year-from", "year-to", "region", "car-interval"]
       .forEach((id) => document.getElementById(id).addEventListener("change", () => save().catch((err) => toast(err.message))));

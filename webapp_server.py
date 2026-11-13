@@ -17,6 +17,7 @@ from blocket_catalog import catalog_or_fallback as blocket_catalog_or_fallback
 from blocket_client import FUEL_CODES
 from car_config import parse_price, parse_tolerance
 from car_sources import find_option, parse_sources, search_keys
+from car_monitor import CAR_STATE_FILE, clear_car_cache
 from car_session import get_car_manager
 from config import load_settings
 from config_store import load_user_config, update_user_config
@@ -386,6 +387,12 @@ async def _stop_car(body: dict) -> None:
     await _touch_card()
 
 
+async def _reset_car_cache() -> None:
+    if _application is not None:
+        get_car_manager(_application).forget_tracked()
+    clear_car_cache(CAR_STATE_FILE)
+
+
 async def _stop_everything() -> None:
     if _application is None:
         raise RuntimeError("Bot is not running")
@@ -460,6 +467,11 @@ class _Handler(BaseHTTPRequestHandler):
                 _call(_stop_car(body))
             elif path == "/api/stop-all":
                 _call(_stop_everything())
+            elif path == "/api/car/reset-cache":
+                if _application is not None and _loop is not None:
+                    _call(_reset_car_cache())
+                else:
+                    clear_car_cache(CAR_STATE_FILE)
             else:
                 self._send(404, {"error": "Not found"}, "application/json")
                 return

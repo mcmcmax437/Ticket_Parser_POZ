@@ -4,7 +4,13 @@ import logging
 
 import requests
 
-from otomoto_client import CarListing, CarSearchParams, accepted_price_bounds, listing_within_filters
+from otomoto_client import (
+    CarListing,
+    CarSearchParams,
+    IncompleteSearch,
+    accepted_price_bounds,
+    listing_within_filters,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +72,16 @@ class BlocketClient:
         query = self.search_params(params)
         listings: list[CarListing] = []
         seen: set[str] = set()
+        failed_page: int | None = None
         for page in range(1, MAX_PAGES + 1):
-            response = self.session.get(SEARCH_URL, params=[*query, ("page", str(page))], timeout=30)
-            response.raise_for_status()
-            payload = response.json()
+            try:
+                response = self.session.get(SEARCH_URL, params=[*query, ("page", str(page))], timeout=30)
+                response.raise_for_status()
+                payload = response.json()
+            except Exception:
+                logger.warning("Blocket search stopped on page %s", page, exc_info=True)
+                failed_page = page
+                break
             docs = payload.get("docs") if isinstance(payload, dict) else None
             if not isinstance(docs, list) or not docs:
                 break
@@ -95,6 +107,8 @@ class BlocketClient:
                 params.make,
                 params.model,
             )
+        if failed_page is not None:
+            raise IncompleteSearch(kept, "Blocket", failed_page)
         return kept
 
 

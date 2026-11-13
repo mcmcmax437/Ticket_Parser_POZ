@@ -69,6 +69,16 @@ class CarSearchParams:
     source: str = ""
 
 
+class IncompleteSearch(Exception):
+    """Pages already read stay available when a later page fails."""
+
+    def __init__(self, listings: list[CarListing], site: str, page: int) -> None:
+        self.listings = listings
+        self.site = site
+        self.page = page
+        super().__init__(site)
+
+
 def _number(text: str) -> int | None:
     digits = re.sub(r"\D", "", text)
     return int(digits) if digits else None
@@ -184,11 +194,17 @@ class OtomotoClient:
         base_query = self.search_params(params)
         listings: list[CarListing] = []
         seen: set[str] = set()
+        failed_page: int | None = None
 
         for page in range(1, MAX_PAGES + 1):
-            response = self.session.get(url, params={**base_query, "page": page}, timeout=30)
-            response.raise_for_status()
-            page_listings = self.parse_listings(response.text)
+            try:
+                response = self.session.get(url, params={**base_query, "page": page}, timeout=30)
+                response.raise_for_status()
+                page_listings = self.parse_listings(response.text)
+            except Exception:
+                logger.warning("Otomoto search stopped on page %s", page, exc_info=True)
+                failed_page = page
+                break
             if not page_listings:
                 break
             fresh = [item for item in page_listings if item.listing_id not in seen]
@@ -206,6 +222,8 @@ class OtomotoClient:
                 params.make,
                 params.model,
             )
+        if failed_page is not None:
+            raise IncompleteSearch(kept, "Otomoto", failed_page)
         return kept
 
     def parse_listings(self, body: str) -> list[CarListing]:
