@@ -1,6 +1,8 @@
 .env
 state.json
 user_config.json
+blocket_catalog_cache.json
+fx_cache.json
 __pycache__/
 *.pyc
 .venv/

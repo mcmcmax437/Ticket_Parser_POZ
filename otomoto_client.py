@@ -18,16 +18,22 @@ GEARBOXES = ("manual", "automatic")
 
 # Card text is the Polish label, while the search param is the otomoto slug.
 _FUEL_ACCEPTED = {
-    "petrol": {"petrol", "benzyna"},
+    "petrol": {"petrol", "benzyna", "bensin"},
     "diesel": {"diesel"},
-    "hybrid": {"hybrid", "hybryda"},
-    "plugin-hybrid": {"plugin-hybrid", "plugin hybrid", "hybryda plug-in"},
-    "electric": {"electric", "elektryczny", "elektriska"},
+    "hybrid": {"hybrid", "hybryda", "hybrid bensin", "hybrid diesel", "hybrid gas"},
+    "plugin-hybrid": {
+        "plugin-hybrid",
+        "plugin hybrid",
+        "hybryda plug-in",
+        "plug in bensin",
+        "plug in diesel",
+    },
+    "electric": {"electric", "elektryczny", "elektriska", "el"},
     "petrol-lpg": {"petrol-lpg", "petrol lpg", "benzyna lpg"},
 }
 _GEAR_ACCEPTED = {
-    "manual": {"manual", "manualna"},
-    "automatic": {"automatic", "automatyczna"},
+    "manual": {"manual", "manualna", "manuell"},
+    "automatic": {"automatic", "automatyczna", "automatisk"},
 }
 
 
@@ -43,6 +49,7 @@ class CarListing:
     gearbox: str
     image_url: str = ""
     location: str = ""
+    currency: str = "zł"
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,7 @@ class CarSearchParams:
     fuel_type: str = ""
     gearbox: str = ""
     damaged: str = ""
+    source: str = ""
 
 
 def _number(text: str) -> int | None:

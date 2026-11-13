@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -68,6 +69,8 @@ def save_car_state(path: Path, search_key: str, listings: list[CarListing] | dic
             existing = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             existing = {}
+    if not isinstance(existing, dict):
+        existing = {}
 
     by_search = existing.get("by_search", {})
     if not isinstance(by_search, dict):
@@ -85,4 +88,43 @@ def save_car_state(path: Path, search_key: str, listings: list[CarListing] | dic
         "last_check": datetime.now(UTC).isoformat(),
     }
 
-    path.write_text(json.dumps({"by_search": by_search}, ensure_ascii=False, indent=2), encoding="utf-8")
+    existing["by_search"] = by_search
+    path.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_dismissed(path: Path) -> set[str]:
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Could not read hidden cars: %s", exc)
+        return set()
+    raw = data.get("dismissed", []) if isinstance(data, dict) else []
+    if not isinstance(raw, list):
+        return set()
+    return {str(item) for item in raw if listing_id_ok(str(item))}
+
+
+def listing_id_ok(listing_id: str) -> bool:
+    return bool(re.fullmatch(r"b?\d{1,20}", str(listing_id)))
+
+
+def dismiss_listing(path: Path, listing_id: str) -> None:
+    if not listing_id_ok(listing_id):
+        return
+    data: dict = {}
+    if path.exists():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        except (json.JSONDecodeError, OSError):
+            data = {}
+    current = data.get("dismissed", [])
+    if not isinstance(current, list):
+        current = []
+    if listing_id not in {str(item) for item in current}:
+        current.append(listing_id)
+    data["dismissed"] = current
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

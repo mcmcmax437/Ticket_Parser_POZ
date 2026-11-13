@@ -13,7 +13,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl
 
-from car_config import car_search_key_from_config, parse_price, parse_tolerance
+from blocket_catalog import catalog_or_fallback as blocket_catalog_or_fallback
+from blocket_client import FUEL_CODES
+from car_config import parse_price, parse_tolerance
+from car_sources import find_option, parse_sources, search_keys
 from car_session import get_car_manager
 from config import load_settings
 from config_store import load_user_config, update_user_config
@@ -45,6 +48,7 @@ PUBLIC_FIELDS = (
     "car_fuel_type",
     "car_gearbox",
     "car_damaged",
+    "car_source",
     "car_poll_interval_seconds",
 )
 SLUG_FIELDS = {"car_make", "car_model", "car_region"}
@@ -65,7 +69,7 @@ def _running_searches() -> tuple[bool, bool, list[dict], list[dict]]:
     if app is None:
         return False, False, [], []
     ticket_key = search_state_key_from_config(config)
-    car_key = car_search_key_from_config(config)
+    car_keys = search_keys(config)
     tickets = [
         {
             "key": item.search_key,
@@ -93,8 +97,9 @@ def _running_searches() -> tuple[bool, bool, list[dict], list[dict]]:
             "fuel_type": item.fuel_type,
             "gearbox": item.gearbox,
             "damaged": item.damaged,
+            "source": item.source,
             "poll_interval_seconds": item.poll_interval_seconds,
-            "current": item.search_key == car_key,
+            "current": item.search_key in car_keys,
         }
         for item in get_car_manager(app).list_active()
     ]
@@ -106,6 +111,38 @@ def _running_searches() -> tuple[bool, bool, list[dict], list[dict]]:
     )
 
 
+def _fx_public() -> dict:
+    try:
+        from fx import pln_per_sek
+
+        return {"pln_per_sek": pln_per_sek()}
+    except Exception:
+        logger.warning("SEK rate is unavailable", exc_info=True)
+        return {}
+
+
+def _known_on_sites(catalogs: list[dict], key: str, token: str, shared: bool) -> bool:
+    found = [find_option(catalog.get(key) or [], token) is not None for catalog in catalogs if catalog.get(key)]
+    if not found:
+        return True
+    return any(found) if shared and key == "regions" else all(found)
+
+
+def _known_model(catalogs: list[dict], make_token: str, model_token: str) -> bool:
+    checks = []
+    for catalog in catalogs:
+        makes = catalog.get("makes") or []
+        if not makes:
+            continue
+        make = find_option(makes, make_token)
+        if make is None:
+            return False
+        models = catalog.get("models", {}).get(make["id"]) or []
+        if models:
+            checks.append(find_option(models, model_token) is not None)
+    return all(checks) if checks else True
+
+
 def _public_state() -> dict:
     config = load_user_config()
     ticket_running, car_running, ticket_searches, car_searches = _running_searches()
@@ -115,6 +152,7 @@ def _public_state() -> dict:
         "car_running": car_running,
         "ticket_searches": ticket_searches,
         "car_searches": car_searches,
+        "fx": _fx_public(),
         "services": [
             {"id": key, "en": service.names["en"], "uk": service.names["uk"]}
             for key, service in SERVICES.items()
@@ -177,32 +215,48 @@ def _clean_patch(body: dict) -> dict:
         seconds = int(body["car_poll_interval_seconds"])
         changes["car_poll_interval_seconds"] = max(60, min(seconds, 86400))
     current = load_user_config()
-    catalog = catalog_or_fallback()
-    make_ids = {item["id"] for item in catalog["makes"]}
-    region_ids = {item["id"] for item in catalog["regions"]}
+    if "car_source" in body:
+        changes["car_source"] = ",".join(parse_sources(body["car_source"]))
+    sources = parse_sources(changes.get("car_source", current.get("car_source") or "otomoto"))
+    shared = len(sources) > 1
+    catalogs = [
+        blocket_catalog_or_fallback() if source == "blocket" else catalog_or_fallback()
+        for source in sources
+    ]
     list_ids = {
-        "car_year_from": set(catalog["years"]),
-        "car_year_to": set(catalog["years"]),
-        "car_mileage_to": set(catalog["mileages"]),
+        "car_year_from": set.intersection(*(set(catalog["years"]) for catalog in catalogs)),
+        "car_year_to": set.intersection(*(set(catalog["years"]) for catalog in catalogs)),
+        "car_mileage_to": set.intersection(*(set(map(str, catalog["mileages"])) for catalog in catalogs)),
     }
     for field in SLUG_FIELDS:
         if field not in body:
             continue
-        slug = re.sub(r"[\s_]+", "-", str(body[field]).strip()).strip("-").lower()
-        if slug and not re.fullmatch(r"[a-z0-9-]+", slug):
+        raw = str(body[field]).strip()
+        if not raw:
+            changes[field] = ""
+            continue
+        if shared:
+            changes[field] = raw if field == "car_region" else re.sub(r"\s+", " ", raw).strip().casefold()
+            continue
+        if sources == ["blocket"]:
+            if not re.fullmatch(r"\d+(?:\.\d+)*", raw):
+                raise ValueError(f"Invalid {field}")
+            changes[field] = raw
+            continue
+        slug = re.sub(r"[\s_]+", "-", raw).strip("-").lower()
+        if not re.fullmatch(r"[a-z0-9-]+", slug):
             raise ValueError(f"Invalid {field}")
         changes[field] = slug
     make = str(changes.get("car_make", current.get("car_make") or ""))
-    if "car_make" in body and make_ids and make and make not in make_ids:
+    if "car_make" in body and make and not _known_on_sites(catalogs, "makes", make, shared):
         raise ValueError("Unknown make")
     if "car_model" in body:
         model = str(changes.get("car_model") or "")
-        allowed_models = {item["id"] for item in catalog["models"].get(make, [])}
-        if model and make_ids and model not in allowed_models:
+        if model and not _known_model(catalogs, make, model):
             raise ValueError("Unknown model")
     if "car_region" in body:
         region = str(changes.get("car_region") or "")
-        if region and region not in region_ids:
+        if region and not _known_on_sites(catalogs, "regions", region, shared):
             raise ValueError("Unknown region")
     for field in INT_FIELDS:
         if field not in body:
@@ -212,6 +266,11 @@ def _clean_patch(body: dict) -> dict:
             changes[field] = ""
             continue
         number = int(digits)
+        if field == "car_mileage_to":
+            if number > 2_000_000:
+                raise ValueError("Mileage must be from 1 to 2 000 000 km")
+            changes[field] = str(number)
+            continue
         if str(number) not in list_ids[field]:
             kind = "year" if field.startswith("car_year") else "mileage"
             raise ValueError(f"Choose a {kind} from the list")
@@ -238,7 +297,8 @@ def _clean_patch(body: dict) -> dict:
             raise ValueError("Price from is after price to")
     if "car_fuel_type" in body:
         fuel = str(body["car_fuel_type"])
-        if fuel and fuel not in FUEL_LABELS:
+        allowed_fuels = set(FUEL_CODES) if "blocket" in sources else set(FUEL_LABELS)
+        if fuel and fuel not in allowed_fuels:
             raise ValueError("Unknown fuel")
         changes["car_fuel_type"] = fuel
     if "car_gearbox" in body:
@@ -310,8 +370,7 @@ async def _start_car() -> None:
     if not str(config.get("car_make") or "").strip():
         raise ValueError("Enter the car make first")
     manager = get_car_manager(_application)
-    if not manager.is_running(car_search_key_from_config(config)):
-        await manager.start_config(config, _application, int(load_settings().telegram_chat_id))
+    await manager.start_config(config, _application, int(load_settings().telegram_chat_id))
     await _touch_card()
 
 
@@ -374,7 +433,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(401, {"error": "Open this page from the bot"}, "application/json")
             return
         if path == "/api/options":
-            self._send(200, catalog_or_fallback(), "application/json")
+            payload = dict(catalog_or_fallback())
+            payload["blocket"] = blocket_catalog_or_fallback()
+            self._send(200, payload, "application/json")
             return
         self._send(200, _public_state(), "application/json")
 
@@ -420,4 +481,6 @@ def start_webapp(application) -> None:
         return
     threading.Thread(target=server.serve_forever, name="webapp", daemon=True).start()
     threading.Thread(target=catalog_or_fallback, name="otomoto-catalog", daemon=True).start()
+    threading.Thread(target=blocket_catalog_or_fallback, name="blocket-catalog", daemon=True).start()
+    threading.Thread(target=_fx_public, name="sek-rate", daemon=True).start()
     logger.info("Mini App listening on http://0.0.0.0:%s", port)

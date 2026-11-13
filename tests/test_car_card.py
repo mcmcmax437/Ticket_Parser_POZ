@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from otomoto_client import OtomotoClient
 from ui_format import car_card_caption
-from widget_sender import _send_car_card
+from widget_sender import _send_car_card, send_car_cards
 
 FIXTURE = """
 <div data-testid="search-results">
@@ -73,6 +73,42 @@ class CarCardTest(unittest.TestCase):
         self.assertEqual(sent[0]["caption"], car_card_caption("uk", item))
         self.assertEqual(sent[0]["parse_mode"], "HTML")
         self.assertTrue(sent[0]["photo"])
+
+    def test_hide_choice_survives_the_next_save(self) -> None:
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        from car_monitor import dismiss_listing, load_dismissed, save_car_state
+
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "car_state.json"
+            save_car_state(path, "toyota", {"1": 43050})
+            dismiss_listing(path, "6150632529")
+            save_car_state(path, "toyota", {"1": 40000})
+            self.assertEqual(load_dismissed(path), {"6150632529"})
+            dismiss_listing(path, "nope")
+            self.assertEqual(load_dismissed(path), {"6150632529"})
+
+    def test_banners_come_before_each_group(self) -> None:
+        item = OtomotoClient().parse_listings(FIXTURE)[0]
+        sent = []
+
+        class Bot:
+            async def send_message(self, **kwargs):
+                sent.append(kwargs)
+
+            async def send_photo(self, **kwargs):
+                sent.append(kwargs)
+
+        class App:
+            bot = Bot()
+
+        with patch("widget_sender._download_photo", return_value=b"jpeg-bytes" * 100):
+            asyncio.run(send_car_cards(App(), 1, "uk", [item], [(item, 50000)]))
+        self.assertEqual(sent[0]["text"], "---------- НОВІ МАШИНИ ----------")
+        self.assertEqual(sent[1]["reply_markup"].inline_keyboard[0][0].callback_data, "hide:615")
+        self.assertEqual(sent[2]["text"], "---------- НОВА ЦІНА ----------")
+        self.assertEqual(sent[3]["reply_markup"].inline_keyboard[0][0].text, "Не показувати")
 
 
 if __name__ == "__main__":

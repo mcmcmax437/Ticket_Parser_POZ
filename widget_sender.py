@@ -7,11 +7,11 @@ import time
 import zlib
 
 import requests
-from telegram import InputFile
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.error import RetryAfter
 from telegram.ext import Application
 
-from i18n import Language
+from i18n import Language, t
 from ui_format import (
     PANEL_WIDGET_HTML,
     STATUS_WIDGET_HTML,
@@ -105,7 +105,13 @@ def _download_photo(url: str) -> bytes:
     return response.content
 
 
-async def _send_car_card(application: Application, chat_id: int, caption: str, item) -> None:
+def _hide_keyboard(lang: Language, listing_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(t("btn_hide_car", lang), callback_data=f"hide:{listing_id}")]]
+    )
+
+
+async def _send_car_card(application: Application, chat_id: int, caption: str, item, reply_markup=None) -> None:
     photo = None
     if item.image_url:
         try:
@@ -119,6 +125,7 @@ async def _send_car_card(application: Application, chat_id: int, caption: str, i
                 photo=InputFile(photo, filename="car.jpg"),
                 caption=caption,
                 parse_mode="HTML",
+                reply_markup=reply_markup,
             )
             return
         except RetryAfter:
@@ -130,13 +137,14 @@ async def _send_car_card(application: Application, chat_id: int, caption: str, i
         text=caption,
         parse_mode="HTML",
         disable_web_page_preview=False,
+        reply_markup=reply_markup,
     )
 
 
-async def _deliver_car_card(application: Application, chat_id: int, caption: str, item) -> bool:
+async def _deliver_car_card(application: Application, chat_id: int, caption: str, item, reply_markup=None) -> bool:
     for _attempt in range(4):
         try:
-            await _send_car_card(application, chat_id, caption, item)
+            await _send_car_card(application, chat_id, caption, item, reply_markup)
             return True
         except RetryAfter as exc:
             await asyncio.sleep(float(exc.retry_after) + 0.5)
@@ -147,15 +155,29 @@ async def _deliver_car_card(application: Application, chat_id: int, caption: str
     return False
 
 
+async def _send_banner(application: Application, chat_id: int, text: str) -> None:
+    await application.bot.send_message(chat_id=chat_id, text=text)
+
+
 async def send_car_cards(application: Application, chat_id: int, lang: Language, new_listings, price_drops):
     sent_new = []
     sent_drops = []
+    if new_listings:
+        await _send_banner(application, chat_id, t("car_banner_new", lang))
+        await asyncio.sleep(0.35)
     for item in new_listings:
-        if await _deliver_car_card(application, chat_id, car_card_caption(lang, item), item):
+        keyboard = _hide_keyboard(lang, item.listing_id)
+        if await _deliver_car_card(application, chat_id, car_card_caption(lang, item), item, keyboard):
             sent_new.append(item)
         await asyncio.sleep(0.35)
+    if price_drops:
+        await _send_banner(application, chat_id, t("car_banner_price", lang))
+        await asyncio.sleep(0.35)
     for item, previous in price_drops:
-        if await _deliver_car_card(application, chat_id, car_card_caption(lang, item, previous), item):
+        keyboard = _hide_keyboard(lang, item.listing_id)
+        if await _deliver_car_card(
+            application, chat_id, car_card_caption(lang, item, previous), item, keyboard
+        ):
             sent_drops.append((item, previous))
         await asyncio.sleep(0.35)
     return sent_new, sent_drops

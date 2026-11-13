@@ -33,7 +33,7 @@ from qmatic_client import QmaticClient, TimeSlot
 from search_log import log_search_result
 from search_config import search_state_key_from_config
 from car_config import car_search_info, car_search_key_from_config, parse_price, parse_tolerance
-from car_monitor import CAR_STATE_FILE, load_car_state, save_car_state
+from car_monitor import CAR_STATE_FILE, dismiss_listing, listing_id_ok, load_car_state, save_car_state
 from car_session import CarManager, get_car_manager
 from search_session import SearchManager, get_search_manager, SLOT_CONFIRMATIONS_KEY
 from services import SERVICE_ORDER
@@ -444,8 +444,17 @@ async def _start_car_search(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await _reply(update, context, message)
         return
 
-    key = car_search_key_from_config(config)
-    if manager.is_running(key):
+    from car_sources import materialize_configs
+
+    try:
+        configs = materialize_configs(config)
+    except ValueError as exc:
+        if update.callback_query:
+            await update.callback_query.answer(str(exc), show_alert=True)
+        else:
+            await _reply(update, context, str(exc))
+        return
+    if configs and all(manager.is_running(car_search_key_from_config(cfg)) for cfg in configs):
         message = t("car_search_already_running", lang)
         if update.callback_query:
             await update.callback_query.answer(message)
@@ -471,7 +480,10 @@ async def _start_car_search(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             t(
                 "car_search_started",
                 lang,
-                filters=car_search_line(lang, car_search_info(config, key)),
+                filters="\n".join(
+                    car_search_line(lang, car_search_info(cfg, car_search_key_from_config(cfg)))
+                    for cfg in configs
+                ),
                 interval=format_interval(int(config["car_poll_interval_seconds"])),
             ),
         )
@@ -1182,6 +1194,17 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     data = query.data or ""
     settings_view = _is_settings_message(query)
+
+    if data.startswith("hide:"):
+        listing_id = data.split(":", 1)[1]
+        if listing_id_ok(listing_id):
+            dismiss_listing(CAR_STATE_FILE, listing_id)
+        await query.answer(t("car_hidden", lang))
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except BadRequest:
+            logger.info("Hide button was already removed | id=%s", listing_id)
+        return
 
     if data in {"prompt:date", "prompt:until", "prompt:from"}:
         await query.answer()

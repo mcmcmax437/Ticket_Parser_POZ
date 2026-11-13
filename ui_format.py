@@ -128,7 +128,30 @@ def _price_part(info: CarSearchInfo) -> str:
     tolerance = str(info.price_tolerance or "").strip()
     if tolerance and tolerance != "0":
         window += f" ±{tolerance}%"
+    if info.source == "blocket" and (str(info.price_from or "").isdigit() or str(info.price_to or "").isdigit()):
+        converted = _sek_window(info)
+        if converted:
+            window += f" (≈ {converted})"
     return window
+
+
+def _sek_window(info: CarSearchInfo) -> str:
+    try:
+        from otomoto_client import CarSearchParams, accepted_price_bounds
+
+        from fx import to_sek
+
+        low, high = accepted_price_bounds(
+            CarSearchParams(
+                make="",
+                price_from=to_sek(int(info.price_from)) if str(info.price_from or "").isdigit() else None,
+                price_to=to_sek(int(info.price_to)) if str(info.price_to or "").isdigit() else None,
+                price_tolerance=int(info.price_tolerance or 0),
+            )
+        )
+    except Exception:
+        return ""
+    return f"{_group(low or '…')}–{_group(high or '…')} kr"
 
 
 def _group(value: object) -> str:
@@ -138,8 +161,33 @@ def _group(value: object) -> str:
     return f"{int(text):,}".replace(",", "\u2009")
 
 
+def _blocket_names(info: CarSearchInfo) -> tuple[str, str, str]:
+    try:
+        from blocket_catalog import catalog_or_fallback
+
+        catalog = catalog_or_fallback()
+    except Exception:
+        return info.make, info.model, info.region
+    makes = {item["id"]: item["label"] for item in catalog.get("makes") or [] if isinstance(item, dict)}
+    models = {
+        item["id"]: item["label"]
+        for item in (catalog.get("models") or {}).get(info.make, [])
+        if isinstance(item, dict)
+    }
+    regions = {item["id"]: item["label"] for item in catalog.get("regions") or [] if isinstance(item, dict)}
+    return (
+        makes.get(info.make, info.make),
+        models.get(info.model, info.model),
+        regions.get(info.region, info.region),
+    )
+
+
 def car_filter_summary(lang: Language, info: CarSearchInfo) -> str:
-    parts = [info.make, info.model, info.region]
+    if info.source == "blocket":
+        make, model, region = _blocket_names(info)
+        parts = ["Blocket", make, model, region]
+    else:
+        parts = [info.make, info.model, info.region]
     if info.year_from or info.year_to:
         parts.append(f"{info.year_from or '…'}–{info.year_to or '…'}")
     if info.price_from or info.price_to:
@@ -199,10 +247,10 @@ def _format_active_cars(lang: Language, active_cars: list[CarSearchInfo]) -> str
 def car_card_caption(lang: Language, item: CarListing, previous: int | None = None) -> str:
     if previous is not None and item.price is not None:
         mark = "📉"
-        price = f"{_group(previous)} → {_group(item.price)} zł"
+        price = f"{_group(previous)} → {_group(item.price)} {item.currency}"
     else:
         mark = "🆕"
-        price = f"{_group(item.price)} zł" if item.price is not None else "—"
+        price = f"{_group(item.price)} {item.currency}" if item.price is not None else "—"
     facts = []
     if item.year:
         facts.append(str(item.year))
@@ -244,7 +292,7 @@ def format_car_alert_html(
 
 
 def _car_details(item: CarListing) -> str:
-    parts = [f"{_group(item.price)} zł" if item.price is not None else "—"]
+    parts = [f"{_group(item.price)} {item.currency}" if item.price is not None else "—"]
     if item.year:
         parts.append(str(item.year))
     if item.mileage:
@@ -398,7 +446,7 @@ def car_alert_widget_html(
         lines.append(f"<div class=\"dt\">{_esc(_car_details(item))}</div>")
     for item, previous in price_drops:
         lines.append(f"<div class=\"it\">📉 {_esc(item.title)}</div>")
-        lines.append(f"<div class=\"dt\">{_group(previous)} → {_group(item.price)} zł</div>")
+        lines.append(f"<div class=\"dt\">{_group(previous)} → {_group(item.price)} {item.currency}</div>")
     return f"<style>{WIDGET_CSS}</style>" + "".join(lines)
 
 

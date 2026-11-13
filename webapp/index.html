@@ -175,7 +175,6 @@
     }
     select:disabled { opacity: 0.55; }
     .field { margin-bottom: 10px; }
-    .manual { margin-top: 6px; }
     .window { margin: 8px 0 0; font-size: 13px; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .chips button {
@@ -274,6 +273,11 @@
     <section id="panel-cars" class="hidden">
       <p id="draft-cars" class="draft hidden"></p>
       <div class="card">
+        <h2 id="lbl-source">Site</h2>
+        <div id="sources" class="chips"></div>
+        <p id="source-hint" class="window"></p>
+      </div>
+      <div class="card">
         <h2 id="lbl-car">Car</h2>
         <div class="grid">
           <div class="field"><label id="lbl-make" for="make">Make</label><select id="make"></select></div>
@@ -282,15 +286,19 @@
           <div class="field"><label id="lbl-year-to" for="year-to">Year to</label><select id="year-to"></select></div>
           <div class="field">
             <label id="lbl-price-from" for="price-from">Price from</label>
-            <select id="price-from"></select>
-            <input id="price-from-custom" class="manual" inputmode="numeric" autocomplete="off" enterkeyhint="done" />
+            <input id="price-from" list="price-from-list" inputmode="numeric" autocomplete="off" enterkeyhint="done" />
+            <datalist id="price-from-list"></datalist>
           </div>
           <div class="field">
             <label id="lbl-price-to" for="price-to">Price to</label>
-            <select id="price-to"></select>
-            <input id="price-to-custom" class="manual" inputmode="numeric" autocomplete="off" enterkeyhint="done" />
+            <input id="price-to" list="price-to-list" inputmode="numeric" autocomplete="off" enterkeyhint="done" />
+            <datalist id="price-to-list"></datalist>
           </div>
-          <div class="field"><label id="lbl-mileage" for="mileage">Max km</label><select id="mileage"></select></div>
+          <div class="field">
+            <label id="lbl-mileage" for="mileage">Max km</label>
+            <input id="mileage" list="mileage-list" inputmode="numeric" autocomplete="off" enterkeyhint="done" />
+            <datalist id="mileage-list"></datalist>
+          </div>
           <div class="field"><label id="lbl-region" for="region">Region</label><select id="region"></select></div>
         </div>
         <div class="field">
@@ -308,7 +316,7 @@
         <h2 id="lbl-gear">Gearbox</h2>
         <div id="gears" class="chips"></div>
       </div>
-      <div class="card">
+      <div class="card" id="card-damage">
         <h2 id="lbl-damage">Condition</h2>
         <div id="damage" class="chips"></div>
       </div>
@@ -335,15 +343,18 @@
         runningNone: "No search is running",
         runningHint: "Set the filters and start. Several searches can run at once, and each one stops on its own.",
         service: "Service", when: "Dates", from: "From", until: "Until", cases: "Number of cases",
-        interval: "Check every", car: "The car", fuel: "Fuel", gear: "Gearbox", damage: "Condition",
+        interval: "Check every", car: "The car", source: "Sites",
+        sourceHint: "Turn on one or both. The price stays in zł, and Blocket receives that amount in kr. Region and condition apply only on the site that has them.",
+        fuel: "Fuel", gear: "Gearbox", damage: "Condition",
         notDamaged: "Not damaged", damaged: "Damaged",
         make: "Make", model: "Model", yearFrom: "Year from", yearTo: "Year to",
         priceFrom: "Price from, zł", priceTo: "Price to, zł", mileage: "Max mileage, km", region: "Region",
-        manualPrice: "or type", tolerance: "Tolerance, %",
+        tolerance: "Tolerance, %",
         windowNone: "Set a price. The tolerance then widens those limits.",
         windowExact: "Shown exactly:", windowWide: "Also considered:",
         badTolerance: "Tolerance has to be from 0 to 100.",
         badPriceValue: "Type a price from 1 to 20 000 000.",
+        badMileage: "Type a mileage from 1 to 2 000 000 km.",
         start: "Start search", startCar: "Start car search", addSearch: "Add this search",
         alreadyBtn: "This search is running", stop: "Stop", stopAll: "Stop all",
         confirmStopAll: "Stop every running search?",
@@ -371,15 +382,18 @@
         runningNone: "Немає активних пошуків",
         runningHint: "Налаштуйте фільтри і запустіть. Можна тримати кілька пошуків одночасно і зупиняти кожен окремо.",
         service: "Послуга", when: "Дати", from: "Від", until: "До", cases: "Кількість справ",
-        interval: "Перевіряти кожні", car: "Авто", fuel: "Паливо", gear: "Коробка", damage: "Стан",
+        interval: "Перевіряти кожні", car: "Авто", source: "Сайти",
+        sourceHint: "Можна увімкнути один сайт або обидва. Ціна лишається в zł, а для Blocket вона перераховується в kr. Регіон і стан діють лише там, де сайт їх має.",
+        fuel: "Паливо", gear: "Коробка", damage: "Стан",
         notDamaged: "Непошкоджене", damaged: "Пошкоджене",
         make: "Марка", model: "Модель", yearFrom: "Рік від", yearTo: "Рік до",
         priceFrom: "Ціна від, zł", priceTo: "Ціна до, zł", mileage: "Макс. пробіг, км", region: "Регіон",
-        manualPrice: "або вручну", tolerance: "Похибка, %",
+        tolerance: "Похибка, %",
         windowNone: "Вкажіть ціну — похибка розширить ці межі.",
         windowExact: "Покаже рівно:", windowWide: "Також розглянемо:",
         badTolerance: "Похибка має бути від 0 до 100.",
         badPriceValue: "Вкажіть ціну від 1 до 20 000 000.",
+        badMileage: "Вкажіть пробіг від 1 до 2 000 000 км.",
         start: "Почати пошук", startCar: "Шукати авто", addSearch: "Додати цей пошук",
         alreadyBtn: "Цей пошук уже йде", stop: "Стоп", stopAll: "Зупинити всі",
         confirmStopAll: "Зупинити всі пошуки?",
@@ -521,10 +535,116 @@
       return found ? found[lang] : item.service_key;
     }
 
+    function listsForSource(source) {
+      if (source === "blocket") return (options && options.blocket) || {};
+      return options || {};
+    }
+
+    function selectedSources() {
+      const raw = String((state && state.config && state.config.car_source) || "otomoto");
+      const found = raw.split(",").map((item) => item.trim()).filter((item) => item === "otomoto" || item === "blocket");
+      const ordered = ["otomoto", "blocket"].filter((item) => found.includes(item));
+      return ordered.length ? ordered : ["otomoto"];
+    }
+
+    function normName(value) {
+      return String(value || "").trim().toLocaleLowerCase().replace(/\s+/g, " ");
+    }
+
+    function byName(items, token) {
+      const wanted = normName(token);
+      return (items || []).find((item) => item.id === token || normName(item.label) === wanted) || null;
+    }
+
+    function sharedCatalog() {
+      const oto = options || {};
+      const blk = (options && options.blocket) || {};
+      const makes = [];
+      const models = {};
+      (blk.makes || []).forEach((blocketMake) => {
+        const otomotoMake = byName(oto.makes, blocketMake.label);
+        if (!otomotoMake) return;
+        const id = normName(otomotoMake.label);
+        makes.push({ id: id, label: otomotoMake.label });
+        const shared = [];
+        (blk.models[blocketMake.id] || []).forEach((blocketModel) => {
+          const otomotoModel = byName(oto.models[otomotoMake.id], blocketModel.label);
+          if (otomotoModel) shared.push({ id: normName(otomotoModel.label), label: otomotoModel.label });
+        });
+        shared.sort((a, b) => a.label.localeCompare(b.label));
+        models[id] = shared;
+      });
+      makes.sort((a, b) => a.label.localeCompare(b.label));
+      const years = (oto.years || []).filter((year) => (blk.years || []).includes(year));
+      const mileages = (oto.mileages || []).filter((km) => (blk.mileages || []).map(String).includes(String(km)));
+      const regions = (oto.regions || []).map((item) => ({ id: item.id, label: "PL · " + item.label }))
+        .concat((blk.regions || []).map((item) => ({ id: item.id, label: "SE · " + item.label })));
+      const blocketFuels = new Set((blk.fuels || []).map((item) => item.id));
+      return {
+        makes: makes,
+        models: models,
+        regions: regions,
+        years: years,
+        prices: oto.prices || [],
+        mileages: mileages,
+        fuels: (state.fuels || []).filter((item) => blocketFuels.has(item.id)),
+        gears: state.gears || []
+      };
+    }
+
+    function carLists() {
+      const sources = selectedSources();
+      const prices = (options && options.prices) || [];
+      if (sources.length > 1) {
+        const shared = sharedCatalog();
+        shared.prices = prices;
+        return shared;
+      }
+      if (sources[0] === "blocket") {
+        const lists = (options && options.blocket) || {};
+        return {
+          makes: lists.makes || [],
+          models: lists.models || {},
+          regions: lists.regions || [],
+          years: lists.years || [],
+          prices: prices,
+          mileages: lists.mileages || [],
+          fuels: lists.fuels || [],
+          gears: lists.gears || (state && state.gears) || []
+        };
+      }
+      return {
+        makes: (options && options.makes) || [],
+        models: (options && options.models) || {},
+        regions: (options && options.regions) || [],
+        years: (options && options.years) || [],
+        prices: prices,
+        mileages: (options && options.mileages) || [],
+        fuels: (state && state.fuels) || [],
+        gears: (state && state.gears) || []
+      };
+    }
+
+    function toSek(pln) {
+      const rate = state && state.fx && Number(state.fx.pln_per_sek);
+      const amount = Number(pln);
+      if (!rate || !amount) return 0;
+      return Math.max(1, Math.round(amount / rate));
+    }
+
+    function sekBand(from, to, percent) {
+      const low = from ? widen(toSek(from), percent, false) : 0;
+      const high = to ? widen(toSek(to), percent, true) : 0;
+      return rangeLabel(low ? String(low) : "", high ? String(high) : "", "kr");
+    }
+
     function carTitle(item) {
-      const makes = (options && options.makes) || [];
-      const models = (options && options.models && options.models[item.make]) || [];
-      return [lookup(makes, item.make), item.model ? lookup(models, item.model) : ""].filter(Boolean).join(" ") || text("car");
+      const lists = listsForSource(item.source || "otomoto");
+      const makes = lists.makes || [];
+      const models = (lists.models && lists.models[item.make]) || [];
+      const name = [lookup(makes, item.make), item.model ? lookup(models, item.model) : ""].filter(Boolean).join(" ");
+      const site = (item.source || "otomoto") === "blocket" ? "Blocket" : "Otomoto";
+      return name ? site + " · " + name : site;
     }
 
     function rangeLabel(from, to, unit) {
@@ -537,15 +657,20 @@
 
     function carMeta(item) {
       const parts = [];
+      const lists = listsForSource(item.source || "otomoto");
       const years = rangeLabel(item.year_from, item.year_to, "");
-      const prices = rangeLabel(item.price_from, item.price_to, "zł");
+      let prices = rangeLabel(item.price_from, item.price_to, "zł");
+      if ((item.source || "otomoto") === "blocket" && prices) {
+        const converted = sekBand(item.price_from, item.price_to, Number(item.price_tolerance || 0));
+        if (converted) prices += " (≈ " + converted + ")";
+      }
       if (years) parts.push(years);
       if (prices) {
         const tolerance = Number(item.price_tolerance || 0);
         parts.push(tolerance ? prices + " ±" + tolerance + "%" : prices);
       }
       if (item.mileage_to) parts.push("≤ " + amount(item.mileage_to) + " " + text("km"));
-      if (item.region) parts.push(lookup((options && options.regions) || [], item.region));
+      if (item.region) parts.push(lookup(lists.regions || [], item.region));
       const fuel = (state.fuels || []).find((entry) => entry.id === item.fuel_type);
       const gear = (state.gears || []).find((entry) => entry.id === item.gearbox);
       if (fuel) parts.push(fuel.label);
@@ -682,6 +807,7 @@
       document.getElementById("lbl-until").textContent = copy.until;
       document.getElementById("lbl-cases").textContent = copy.cases;
       document.getElementById("lbl-interval").textContent = copy.interval;
+      document.getElementById("lbl-source").textContent = copy.source;
       document.getElementById("lbl-car").textContent = copy.car;
       document.getElementById("lbl-fuel").textContent = copy.fuel;
       document.getElementById("lbl-gear").textContent = copy.gear;
@@ -692,6 +818,10 @@
       document.getElementById("lbl-year-to").textContent = copy.yearTo;
       document.getElementById("lbl-price-from").textContent = copy.priceFrom;
       document.getElementById("lbl-price-to").textContent = copy.priceTo;
+      const siteHint = document.getElementById("source-hint");
+      const showRate = selectedSources().includes("blocket");
+      siteHint.textContent = showRate ? copy.sourceHint : "";
+      siteHint.classList.toggle("hidden", !showRate);
       document.getElementById("lbl-tolerance").textContent = copy.tolerance;
       document.getElementById("lbl-mileage").textContent = copy.mileage;
       document.getElementById("lbl-region").textContent = copy.region;
@@ -701,7 +831,11 @@
     function actionState(kind) {
       const copy = COPY[lang];
       const list = kind === "car" ? state.car_searches || [] : state.ticket_searches || [];
-      const mine = list.find((item) => item.current);
+      const mine = kind === "car"
+        ? selectedSources().every((source) => list.some((item) => item.current && (item.source || "otomoto") === source))
+          ? list.find((item) => item.current)
+          : null
+        : list.find((item) => item.current);
       const total = (state.ticket_searches || []).length + (state.car_searches || []).length;
       const selected = Number(document.getElementById(kind === "car" ? "car-interval" : "interval").value);
       if (mine) {
@@ -732,33 +866,39 @@
       document.getElementById("until").value = cfg.notify_before_date || "";
       paintIntervals();
       selectInterval("interval", cfg.poll_interval_seconds);
-      const lists = options || { makes: [], models: {}, regions: [], years: [], prices: [], mileages: [] };
+      const chosen = selectedSources();
+      const sources = document.getElementById("sources");
+      sources.replaceChildren();
+      chip(sources, "Otomoto", chosen.includes("otomoto"), () => toggleSource("otomoto"));
+      chip(sources, "Blocket", chosen.includes("blocket"), () => toggleSource("blocket"));
+      const lists = carLists();
       fillSelect("make", lists.makes, cfg.car_make, text("choose"));
       const models = lists.models[cfg.car_make] || [];
       fillSelect("model", models, cfg.car_model, text("any"));
       document.getElementById("model").disabled = !cfg.car_make;
       fillSelect("year-from", lists.years, cfg.car_year_from, text("any"));
       fillSelect("year-to", lists.years, cfg.car_year_to, text("any"));
-      paintPrice("price-from", "price-from-custom", cfg.car_price_from);
-      paintPrice("price-to", "price-to-custom", cfg.car_price_to);
+      paintPrice("price-from", "price-from-list", cfg.car_price_from);
+      paintPrice("price-to", "price-to-list", cfg.car_price_to);
       paintTolerance(cfg.car_price_tolerance);
-      fillSelect("mileage", lists.mileages, cfg.car_mileage_to, text("any"), amount);
+      paintNumber("mileage", "mileage-list", lists.mileages, cfg.car_mileage_to);
       fillSelect("region", lists.regions, cfg.car_region, text("any"));
       selectInterval("car-interval", cfg.car_poll_interval_seconds);
 
       const fuels = document.getElementById("fuels");
       fuels.replaceChildren();
       chip(fuels, text("any"), !cfg.car_fuel_type, () => save({ car_fuel_type: "" }).catch((err) => toast(err.message)));
-      state.fuels.forEach((item) => chip(fuels, item.label, item.id === cfg.car_fuel_type, () => save({ car_fuel_type: item.id }).catch((err) => toast(err.message))));
+      lists.fuels.forEach((item) => chip(fuels, item.label, item.id === cfg.car_fuel_type, () => save({ car_fuel_type: item.id }).catch((err) => toast(err.message))));
       const gears = document.getElementById("gears");
       gears.replaceChildren();
       chip(gears, text("any"), !cfg.car_gearbox, () => save({ car_gearbox: "" }).catch((err) => toast(err.message)));
-      state.gears.forEach((item) => chip(gears, item.label, item.id === cfg.car_gearbox, () => save({ car_gearbox: item.id }).catch((err) => toast(err.message))));
+      lists.gears.forEach((item) => chip(gears, item.label, item.id === cfg.car_gearbox, () => save({ car_gearbox: item.id }).catch((err) => toast(err.message))));
       const damage = document.getElementById("damage");
       damage.replaceChildren();
       chip(damage, text("any"), !cfg.car_damaged, () => save({ car_damaged: "" }).catch((err) => toast(err.message)));
       chip(damage, text("notDamaged"), cfg.car_damaged === "0", () => save({ car_damaged: "0" }).catch((err) => toast(err.message)));
       chip(damage, text("damaged"), cfg.car_damaged === "1", () => save({ car_damaged: "1" }).catch((err) => toast(err.message)));
+      document.getElementById("card-damage").classList.toggle("hidden", !chosen.includes("otomoto"));
       paintChrome();
     }
 
@@ -806,16 +946,22 @@
       select.value = Array.from(select.options).some((option) => option.value === wanted) ? wanted : "";
     }
 
-    function paintPrice(selectId, manualId, current) {
-      const lists = options || { prices: [] };
-      fillSelect(selectId, lists.prices, "", text("any"), amount);
-      const select = document.getElementById(selectId);
-      const manual = document.getElementById(manualId);
-      const wanted = current == null ? "" : String(current);
-      const known = Boolean(wanted) && Array.from(select.options).some((option) => option.value === wanted);
-      select.value = known ? wanted : "";
-      manual.value = wanted && !known ? wanted : "";
-      manual.placeholder = text("manualPrice");
+    function paintNumber(inputId, listId, items, current) {
+      const list = document.getElementById(listId);
+      list.replaceChildren();
+      (items || []).forEach((item) => {
+        const option = document.createElement("option");
+        option.value = amount(typeof item === "string" ? item : item.id);
+        list.appendChild(option);
+      });
+      const input = document.getElementById(inputId);
+      const wanted = current == null ? "" : String(current).replace(/\D/g, "");
+      if (document.activeElement !== input) input.value = wanted ? amount(wanted) : "";
+      input.placeholder = text("any");
+    }
+
+    function paintPrice(inputId, listId, current) {
+      paintNumber(inputId, listId, carLists().prices, current);
     }
 
     function paintTolerance(current) {
@@ -833,11 +979,9 @@
       paintWindow();
     }
 
-    function statedAmount(selectId, manualId) {
-      const typed = document.getElementById(manualId).value.replace(/\D/g, "");
-      if (typed) return Number(typed);
-      const selected = document.getElementById(selectId).value;
-      return selected ? Number(selected) : 0;
+    function statedAmount(inputId) {
+      const typed = document.getElementById(inputId).value.replace(/\D/g, "");
+      return typed ? Number(typed) : 0;
     }
 
     function widen(amount, percent, upper) {
@@ -848,8 +992,8 @@
 
     function paintWindow() {
       const node = document.getElementById("price-window");
-      const from = statedAmount("price-from", "price-from-custom");
-      const to = statedAmount("price-to", "price-to-custom");
+      const from = statedAmount("price-from");
+      const to = statedAmount("price-to");
       const typed = document.getElementById("price-tolerance").value.replace(/\D/g, "");
       const percent = typed ? Number(typed) : 0;
       if (!from && !to) {
@@ -859,17 +1003,28 @@
       const low = from ? widen(from, Math.min(percent, 100), false) : 0;
       const high = to ? widen(to, Math.min(percent, 100), true) : 0;
       const band = rangeLabel(low ? String(low) : "", high ? String(high) : "", "zł");
-      node.textContent = (percent ? text("windowWide") : text("windowExact")) + " " + band;
+      let line = (percent ? text("windowWide") : text("windowExact")) + " " + band;
+      if (selectedSources().includes("blocket")) {
+        const converted = sekBand(from, to, Math.min(percent, 100));
+        if (converted) line += " · Blocket ≈ " + converted;
+      }
+      node.textContent = line;
     }
 
-    function readPrice(selectId, manualId) {
-      const typed = document.getElementById(manualId).value.replace(/\D/g, "");
-      if (typed) {
-        const number = Number(typed);
-        if (number < 1 || number > 20000000) return { error: true, value: "" };
-        return { error: false, value: String(number) };
-      }
-      return { error: false, value: document.getElementById(selectId).value.trim() };
+    function readPrice(inputId) {
+      const typed = document.getElementById(inputId).value.replace(/\D/g, "");
+      if (!typed) return { error: false, value: "" };
+      const number = Number(typed);
+      if (number < 1 || number > 20000000) return { error: true, value: "" };
+      return { error: false, value: String(number) };
+    }
+
+    function readMileage() {
+      const typed = document.getElementById("mileage").value.replace(/\D/g, "");
+      if (!typed) return { error: false, value: "" };
+      const number = Number(typed);
+      if (number < 1 || number > 2000000) return { error: true, value: "" };
+      return { error: false, value: String(number) };
     }
 
     function readTolerance() {
@@ -881,8 +1036,9 @@
     }
 
     function formPatch() {
-      const fromPrice = readPrice("price-from", "price-from-custom");
-      const toPrice = readPrice("price-to", "price-to-custom");
+      const fromPrice = readPrice("price-from");
+      const toPrice = readPrice("price-to");
+      const mileage = readMileage();
       const tolerance = readTolerance();
       return {
         notify_from_date: document.getElementById("from").value,
@@ -895,10 +1051,11 @@
         car_price_from: fromPrice.value,
         car_price_to: toPrice.value,
         car_price_tolerance: tolerance.value,
-        car_mileage_to: document.getElementById("mileage").value.trim(),
+        car_mileage_to: mileage.value,
         car_region: document.getElementById("region").value.trim(),
         car_poll_interval_seconds: Number(document.getElementById("car-interval").value),
         _priceError: fromPrice.error || toPrice.error,
+        _mileageError: mileage.error,
         _toleranceError: tolerance.error
       };
     }
@@ -906,11 +1063,18 @@
     async function save(extra) {
       const draft = formPatch();
       const priceError = draft._priceError;
+      const mileageError = draft._mileageError;
       const toleranceError = draft._toleranceError;
       delete draft._priceError;
+      delete draft._mileageError;
       delete draft._toleranceError;
       if (priceError) {
         toast(text("badPriceValue"));
+        paint();
+        return;
+      }
+      if (mileageError) {
+        toast(text("badMileage"));
         paint();
         return;
       }
@@ -949,7 +1113,10 @@
       }
       await save();
       const list = kind === "car" ? state.car_searches || [] : state.ticket_searches || [];
-      if (list.some((item) => item.current)) {
+      const covered = kind === "car"
+        ? selectedSources().every((source) => list.some((item) => item.current && (item.source || "otomoto") === source))
+        : list.some((item) => item.current);
+      if (covered) {
         toast(text("already"));
         paintChrome();
         return;
@@ -1006,6 +1173,7 @@
           car_fuel_type: item.fuel_type,
           car_gearbox: item.gearbox,
           car_damaged: item.damaged || "",
+          car_source: item.source || "otomoto",
           car_poll_interval_seconds: item.poll_interval_seconds
         });
         return;
@@ -1026,26 +1194,61 @@
     document.getElementById("start-ticket").onclick = () => run("ticket").catch((err) => toast(err.message));
     document.getElementById("start-car").onclick = () => run("car").catch((err) => toast(err.message));
     document.getElementById("stop-all").onclick = askStopAll;
-    ["from", "until", "interval", "model", "year-from", "year-to", "mileage", "region", "car-interval"]
+    ["from", "until", "interval", "model", "year-from", "year-to", "region", "car-interval"]
       .forEach((id) => document.getElementById(id).addEventListener("change", () => save().catch((err) => toast(err.message))));
-    function bindPrice(selectId, manualId) {
-      document.getElementById(selectId).addEventListener("change", () => {
-        document.getElementById(manualId).value = "";
-        save().catch((err) => toast(err.message));
-      });
-      const manual = document.getElementById(manualId);
-      manual.addEventListener("input", paintWindow);
-      manual.addEventListener("change", () => save().catch((err) => toast(err.message)));
+    function bindPrice(inputId) {
+      const input = document.getElementById(inputId);
+      input.addEventListener("input", paintWindow);
+      input.addEventListener("change", () => save().catch((err) => toast(err.message)));
     }
-    bindPrice("price-from", "price-from-custom");
-    bindPrice("price-to", "price-to-custom");
+    bindPrice("price-from");
+    bindPrice("price-to");
+    bindPrice("mileage");
     const toleranceInput = document.getElementById("price-tolerance");
     toleranceInput.addEventListener("input", paintWindow);
     toleranceInput.addEventListener("change", () => save().catch((err) => toast(err.message)));
+    function listed(items, id) {
+      if (!id) return true;
+      return (items || []).some((item) => (typeof item === "string" ? item : item.id) === id);
+    }
+
+    function entryByToken(items, token) {
+      return byName(items, token);
+    }
+
+    function toggleSource(source) {
+      const current = selectedSources();
+      const next = current.includes(source) ? current.filter((item) => item !== source) : current.concat(source);
+      const ordered = ["otomoto", "blocket"].filter((item) => next.includes(item));
+      if (!ordered.length) return;
+      const previous = carLists();
+      const patch = { car_source: ordered.join(",") };
+      state = Object.assign({}, state, { config: Object.assign({}, state.config, patch) });
+      const upcoming = carLists();
+      state = Object.assign({}, state, { config: Object.assign({}, state.config, { car_source: current.join(",") }) });
+      const make = entryByToken(previous.makes, document.getElementById("make").value);
+      if (!make) {
+        patch.car_make = "";
+        patch.car_model = "";
+      } else {
+        const nextMake = entryByToken(upcoming.makes, make.label);
+        patch.car_make = nextMake ? nextMake.id : "";
+        const model = nextMake ? entryByToken(previous.models[make.id], document.getElementById("model").value) : null;
+        const nextModel = model && nextMake ? entryByToken(upcoming.models[nextMake.id], model.label) : null;
+        patch.car_model = nextModel ? nextModel.id : "";
+      }
+      if (!listed(upcoming.years, document.getElementById("year-from").value)) patch.car_year_from = "";
+      if (!listed(upcoming.years, document.getElementById("year-to").value)) patch.car_year_to = "";
+      if (!listed(upcoming.regions, document.getElementById("region").value)) patch.car_region = "";
+      if (!listed(upcoming.fuels, state.config.car_fuel_type || "")) patch.car_fuel_type = "";
+      if (!ordered.includes("otomoto")) patch.car_damaged = "";
+      save(patch).catch((err) => toast(err.message));
+    }
+
     document.getElementById("make").addEventListener("change", () => {
       const make = document.getElementById("make").value;
       const model = document.getElementById("model");
-      const models = (options && options.models && options.models[make]) || [];
+      const models = carLists().models[make] || [];
       if (!models.some((item) => item.id === model.value)) model.value = "";
       model.disabled = !make;
       save().catch((err) => toast(err.message));

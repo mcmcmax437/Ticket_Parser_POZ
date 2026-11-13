@@ -22,6 +22,7 @@ CAR_CONFIG_KEYS = (
     "car_fuel_type",
     "car_gearbox",
     "car_damaged",
+    "car_source",
 )
 
 CAR_FIELD_LABELS = {
@@ -81,6 +82,7 @@ def car_search_params_from_config(config: dict) -> CarSearchParams:
         fuel_type=str(config.get("car_fuel_type") or "").strip(),
         gearbox=str(config.get("car_gearbox") or "").strip(),
         damaged=str(config.get("car_damaged") or "").strip(),
+        source=str(config.get("car_source") or "").strip(),
     )
 
 
@@ -98,9 +100,12 @@ def car_search_key(params: CarSearchParams) -> str:
         params.fuel_type,
         params.gearbox,
     ]
-    if params.damaged:
+    if params.damaged and params.source != "blocket":
         values.append(params.damaged)
-    return "|".join(str(value or "") for value in values)
+    key = "|".join(str(value or "") for value in values)
+    if params.source == "blocket":
+        return f"blocket|{key}"
+    return key
 
 
 def car_search_key_from_config(config: dict) -> str:
@@ -124,6 +129,7 @@ class CarSearchInfo:
     poll_interval_seconds: int
     language: str
     damaged: str = ""
+    source: str = ""
 
 
 def car_search_info(config: dict, search_key: str) -> CarSearchInfo:
@@ -142,6 +148,7 @@ def car_search_info(config: dict, search_key: str) -> CarSearchInfo:
         fuel_type=params.fuel_type,
         gearbox=params.gearbox,
         damaged=params.damaged,
+        source=params.source,
         poll_interval_seconds=int(config["car_poll_interval_seconds"]),
         language=normalize_language(str(config.get("language", "en"))),
     )

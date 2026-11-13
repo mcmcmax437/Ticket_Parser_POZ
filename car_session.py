@@ -6,15 +6,18 @@ import logging
 from telegram.ext import Application
 
 from car_config import car_search_info, car_search_key_from_config, car_search_params_from_config
+from car_sources import materialize_configs, prices_for_query
 from car_monitor import (
     CAR_STATE_FILE,
     find_new_listings,
     find_price_drops,
     load_car_state,
+    load_dismissed,
     remember_shown,
     save_car_state,
 )
 from i18n import normalize_language, t
+from blocket_client import BlocketClient
 from otomoto_client import CarListing, OtomotoClient
 from widget_sender import refresh_status_card, send_car_cards
 
@@ -71,8 +74,13 @@ class CarWorker:
         self.stop_event = None
 
     async def _publish(self, application: Application, chat_id: int, current: list[CarListing]) -> None:
-        new_listings = find_new_listings(current, self.known)
-        price_drops = find_price_drops(current, self.known)
+        dismissed = load_dismissed(CAR_STATE_FILE)
+        new_listings = [
+            item for item in find_new_listings(current, self.known) if item.listing_id not in dismissed
+        ]
+        price_drops = [
+            pair for pair in find_price_drops(current, self.known) if pair[0].listing_id not in dismissed
+        ]
         sent_new: list[CarListing] = []
         sent_drops: list[tuple[CarListing, int]] = []
         if new_listings or price_drops:
@@ -115,9 +123,9 @@ class CarWorker:
                 if self.stop_event.is_set():
                     break
 
-                client = OtomotoClient()
+                client = BlocketClient() if self.params.source == "blocket" else OtomotoClient()
                 try:
-                    current = await asyncio.to_thread(client.get_listings, self.params)
+                    current = await asyncio.to_thread(client.get_listings, prices_for_query(self.params))
                     await self._publish(application, chat_id, current)
                     await refresh_status_card(application, chat_id, self.language)
                 except Exception as exc:
@@ -156,16 +164,27 @@ class CarManager:
         worker = self._workers.get(search_key)
         return worker is not None and worker.is_running
 
-    async def start_config(self, config: dict, application: Application, chat_id: int) -> str:
-        key = car_search_key_from_config(config)
+    async def start_config(self, config: dict, application: Application, chat_id: int) -> list[str]:
+        keys: list[str] = []
+        configs = materialize_configs(config)
+        if any(cfg.get("car_source") == "blocket" and (cfg.get("car_price_from") or cfg.get("car_price_to")) for cfg in configs):
+            try:
+                from fx import pln_per_sek
 
-        worker = self._workers.get(key)
-        if worker and worker.is_running:
-            return key
-
-        self._workers[key] = CarWorker(key, config)
-        await self._workers[key].start(application, chat_id)
-        return key
+                pln_per_sek()
+            except Exception as exc:
+                raise ValueError("Could not convert zł to kr right now") from exc
+        for cfg in configs:
+            if not str(cfg.get("car_make") or "").strip():
+                raise ValueError("Enter the car make first")
+            key = car_search_key_from_config(cfg)
+            keys.append(key)
+            worker = self._workers.get(key)
+            if worker and worker.is_running:
+                continue
+            self._workers[key] = CarWorker(key, cfg)
+            await self._workers[key].start(application, chat_id)
+        return keys
 
     async def stop_key(self, search_key: str) -> bool:
         worker = self._workers.get(search_key)
@@ -175,7 +194,15 @@ class CarManager:
         return True
 
     async def stop_config(self, config: dict) -> bool:
-        return await self.stop_key(car_search_key_from_config(config))
+        try:
+            configs = materialize_configs(config)
+        except ValueError:
+            configs = [config]
+        stopped = False
+        for cfg in configs:
+            if await self.stop_key(car_search_key_from_config(cfg)):
+                stopped = True
+        return stopped
 
     async def stop_all(self) -> int:
         stopped = 0

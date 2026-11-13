@@ -37,6 +37,7 @@ DEFAULT_USER_CONFIG: dict[str, Any] = {
     "car_fuel_type": "",
     "car_gearbox": "",
     "car_damaged": "",
+    "car_source": "otomoto",
     "car_poll_interval_seconds": 900,
 }
 
