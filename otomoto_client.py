@@ -58,6 +58,7 @@ class CarSearchParams:
     mileage_to: int | None = None
     fuel_type: str = ""
     gearbox: str = ""
+    damaged: str = ""
 
 
 def _number(text: str) -> int | None:
@@ -166,6 +167,8 @@ class OtomotoClient:
             query["search[filter_enum_fuel_type]"] = params.fuel_type
         if params.gearbox:
             query["search[filter_enum_gearbox]"] = params.gearbox
+        if params.damaged in {"0", "1"}:
+            query["search[filter_enum_damaged]"] = params.damaged
         return query
 
     def get_listings(self, params: CarSearchParams) -> list[CarListing]:

@@ -309,6 +309,10 @@
         <div id="gears" class="chips"></div>
       </div>
       <div class="card">
+        <h2 id="lbl-damage">Condition</h2>
+        <div id="damage" class="chips"></div>
+      </div>
+      <div class="card">
         <label id="lbl-car-interval" for="car-interval">Check every</label>
         <select id="car-interval">
           <option value="300">5 min</option>
@@ -331,7 +335,8 @@
         runningNone: "No search is running",
         runningHint: "Set the filters and start. Several searches can run at once, and each one stops on its own.",
         service: "Service", when: "Dates", from: "From", until: "Until", cases: "Number of cases",
-        interval: "Check every", car: "The car", fuel: "Fuel", gear: "Gearbox",
+        interval: "Check every", car: "The car", fuel: "Fuel", gear: "Gearbox", damage: "Condition",
+        notDamaged: "Not damaged", damaged: "Damaged",
         make: "Make", model: "Model", yearFrom: "Year from", yearTo: "Year to",
         priceFrom: "Price from, zł", priceTo: "Price to, zł", mileage: "Max mileage, km", region: "Region",
         manualPrice: "or type", tolerance: "Tolerance, %",
@@ -366,7 +371,8 @@
         runningNone: "Немає активних пошуків",
         runningHint: "Налаштуйте фільтри і запустіть. Можна тримати кілька пошуків одночасно і зупиняти кожен окремо.",
         service: "Послуга", when: "Дати", from: "Від", until: "До", cases: "Кількість справ",
-        interval: "Перевіряти кожні", car: "Авто", fuel: "Паливо", gear: "Коробка",
+        interval: "Перевіряти кожні", car: "Авто", fuel: "Паливо", gear: "Коробка", damage: "Стан",
+        notDamaged: "Непошкоджене", damaged: "Пошкоджене",
         make: "Марка", model: "Модель", yearFrom: "Рік від", yearTo: "Рік до",
         priceFrom: "Ціна від, zł", priceTo: "Ціна до, zł", mileage: "Макс. пробіг, км", region: "Регіон",
         manualPrice: "або вручну", tolerance: "Похибка, %",
@@ -544,6 +550,8 @@
       const gear = (state.gears || []).find((entry) => entry.id === item.gearbox);
       if (fuel) parts.push(fuel.label);
       if (gear) parts.push(gear.label);
+      if (item.damaged === "0") parts.push(text("notDamaged"));
+      if (item.damaged === "1") parts.push(text("damaged"));
       parts.push(everyLabel(item.poll_interval_seconds));
       return parts.join(" · ");
     }
@@ -677,6 +685,7 @@
       document.getElementById("lbl-car").textContent = copy.car;
       document.getElementById("lbl-fuel").textContent = copy.fuel;
       document.getElementById("lbl-gear").textContent = copy.gear;
+      document.getElementById("lbl-damage").textContent = copy.damage;
       document.getElementById("lbl-make").textContent = copy.make;
       document.getElementById("lbl-model").textContent = copy.model;
       document.getElementById("lbl-year-from").textContent = copy.yearFrom;
@@ -745,6 +754,11 @@
       gears.replaceChildren();
       chip(gears, text("any"), !cfg.car_gearbox, () => save({ car_gearbox: "" }).catch((err) => toast(err.message)));
       state.gears.forEach((item) => chip(gears, item.label, item.id === cfg.car_gearbox, () => save({ car_gearbox: item.id }).catch((err) => toast(err.message))));
+      const damage = document.getElementById("damage");
+      damage.replaceChildren();
+      chip(damage, text("any"), !cfg.car_damaged, () => save({ car_damaged: "" }).catch((err) => toast(err.message)));
+      chip(damage, text("notDamaged"), cfg.car_damaged === "0", () => save({ car_damaged: "0" }).catch((err) => toast(err.message)));
+      chip(damage, text("damaged"), cfg.car_damaged === "1", () => save({ car_damaged: "1" }).catch((err) => toast(err.message)));
       paintChrome();
     }
 
@@ -991,6 +1005,7 @@
           car_mileage_to: item.mileage_to,
           car_fuel_type: item.fuel_type,
           car_gearbox: item.gearbox,
+          car_damaged: item.damaged || "",
           car_poll_interval_seconds: item.poll_interval_seconds
         });
         return;

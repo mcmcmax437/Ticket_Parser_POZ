@@ -21,6 +21,7 @@ CAR_CONFIG_KEYS = (
     "car_mileage_to",
     "car_fuel_type",
     "car_gearbox",
+    "car_damaged",
 )
 
 CAR_FIELD_LABELS = {
@@ -35,6 +36,7 @@ CAR_FIELD_LABELS = {
     "car_mileage_to": "label_car_mileage_to",
     "car_fuel_type": "label_car_fuel_type",
     "car_gearbox": "label_car_gearbox",
+    "car_damaged": "label_car_damaged",
 }
 
 
@@ -78,26 +80,27 @@ def car_search_params_from_config(config: dict) -> CarSearchParams:
         mileage_to=_as_int(config.get("car_mileage_to")),
         fuel_type=str(config.get("car_fuel_type") or "").strip(),
         gearbox=str(config.get("car_gearbox") or "").strip(),
+        damaged=str(config.get("car_damaged") or "").strip(),
     )
 
 
 def car_search_key(params: CarSearchParams) -> str:
-    return "|".join(
-        str(v or "")
-        for v in (
-            params.make,
-            params.model,
-            params.region,
-            params.year_from,
-            params.year_to,
-            params.price_from,
-            params.price_to,
-            params.price_tolerance,
-            params.mileage_to,
-            params.fuel_type,
-            params.gearbox,
-        )
-    )
+    values = [
+        params.make,
+        params.model,
+        params.region,
+        params.year_from,
+        params.year_to,
+        params.price_from,
+        params.price_to,
+        params.price_tolerance,
+        params.mileage_to,
+        params.fuel_type,
+        params.gearbox,
+    ]
+    if params.damaged:
+        values.append(params.damaged)
+    return "|".join(str(value or "") for value in values)
 
 
 def car_search_key_from_config(config: dict) -> str:
@@ -120,6 +123,7 @@ class CarSearchInfo:
     gearbox: str
     poll_interval_seconds: int
     language: str
+    damaged: str = ""
 
 
 def car_search_info(config: dict, search_key: str) -> CarSearchInfo:
@@ -137,6 +141,7 @@ def car_search_info(config: dict, search_key: str) -> CarSearchInfo:
         mileage_to=str(config.get("car_mileage_to") or ""),
         fuel_type=params.fuel_type,
         gearbox=params.gearbox,
+        damaged=params.damaged,
         poll_interval_seconds=int(config["car_poll_interval_seconds"]),
         language=normalize_language(str(config.get("language", "en"))),
     )

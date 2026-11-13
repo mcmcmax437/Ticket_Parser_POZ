@@ -44,6 +44,7 @@ PUBLIC_FIELDS = (
     "car_mileage_to",
     "car_fuel_type",
     "car_gearbox",
+    "car_damaged",
     "car_poll_interval_seconds",
 )
 SLUG_FIELDS = {"car_make", "car_model", "car_region"}
@@ -91,6 +92,7 @@ def _running_searches() -> tuple[bool, bool, list[dict], list[dict]]:
             "mileage_to": item.mileage_to,
             "fuel_type": item.fuel_type,
             "gearbox": item.gearbox,
+            "damaged": item.damaged,
             "poll_interval_seconds": item.poll_interval_seconds,
             "current": item.search_key == car_key,
         }
@@ -244,6 +246,11 @@ def _clean_patch(body: dict) -> dict:
         if gear and gear not in GEARBOX_LABELS:
             raise ValueError("Unknown gearbox")
         changes["car_gearbox"] = gear
+    if "car_damaged" in body:
+        damaged = str(body["car_damaged"]).strip()
+        if damaged not in {"", "0", "1"}:
+            raise ValueError("Unknown condition")
+        changes["car_damaged"] = damaged
     return changes
 
 

@@ -150,6 +150,10 @@ def car_filter_summary(lang: Language, info: CarSearchInfo) -> str:
         parts.append(FUEL_LABELS.get(info.fuel_type, info.fuel_type))
     if info.gearbox:
         parts.append(GEARBOX_LABELS.get(info.gearbox, info.gearbox))
+    if info.damaged == "0":
+        parts.append(t("damage_no", lang))
+    elif info.damaged == "1":
+        parts.append(t("damage_yes", lang))
     return " · ".join(_esc(p) for p in parts if p)
 
 

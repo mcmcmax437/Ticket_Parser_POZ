@@ -81,6 +81,11 @@ class PriceWindowTest(unittest.TestCase):
         exact = OtomotoClient().search_params(_search(price_tolerance=0))
         self.assertEqual(exact["search[filter_float_price:from]"], 40000)
         self.assertEqual(exact["search[filter_float_price:to]"], 50000)
+        self.assertNotIn("search[filter_enum_damaged]", exact)
+        undamaged = OtomotoClient().search_params(_search(damaged="0"))
+        self.assertEqual(undamaged["search[filter_enum_damaged]"], "0")
+        self.assertEqual(car_search_key(_search()), car_search_key(_search(damaged="")))
+        self.assertNotEqual(car_search_key(_search()), car_search_key(_search(damaged="1")))
 
     def test_summary_shows_the_tolerance(self) -> None:
         info = CarSearchInfo(
