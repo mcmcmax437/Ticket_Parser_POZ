@@ -110,6 +110,44 @@ class CarCardTest(unittest.TestCase):
         self.assertEqual(sent[2]["text"], "---------- НОВА ЦІНА ----------")
         self.assertEqual(sent[3]["reply_markup"].inline_keyboard[0][0].text, "Не показувати")
 
+    def test_hide_adds_a_visible_mark(self) -> None:
+        from telegram_bot import _hidden_body, _mark_car_hidden
+
+        mark = "🚫 <b>Не показувати</b>"
+        self.assertEqual(_hidden_body("🆕 car", mark), f"{mark}\n🆕 car")
+        self.assertEqual(_hidden_body(f"{mark}\n🆕 car", mark), f"{mark}\n🆕 car")
+
+        class Photo:
+            photo = (object(),)
+            caption_html = "🆕 car"
+            text = None
+
+        class Text:
+            photo = ()
+            text = "🆕 car"
+            text_html = "🆕 car"
+
+        class Query:
+            def __init__(self, message):
+                self.message = message
+                self.edits = []
+
+            async def edit_message_caption(self, **kwargs):
+                self.edits.append(kwargs)
+
+            async def edit_message_text(self, **kwargs):
+                self.edits.append(kwargs)
+
+        photo = Query(Photo())
+        asyncio.run(_mark_car_hidden(photo, "uk"))
+        self.assertEqual(photo.edits[0]["caption"], f"{mark}\n🆕 car")
+        self.assertIsNone(photo.edits[0]["reply_markup"])
+
+        text = Query(Text())
+        asyncio.run(_mark_car_hidden(text, "uk"))
+        self.assertEqual(text.edits[0]["text"], f"{mark}\n🆕 car")
+        self.assertIsNone(text.edits[0]["reply_markup"])
+
 
 if __name__ == "__main__":
     unittest.main()

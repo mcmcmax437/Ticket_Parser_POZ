@@ -190,6 +190,7 @@ TRANSLATIONS: dict[str, dict[Language, str]] = {
     "car_banner_price": {"en": "---------- NEW PRICE ----------", "uk": "---------- НОВА ЦІНА ----------"},
     "btn_hide_car": {"en": "Don't show again", "uk": "Не показувати"},
     "car_hidden": {"en": "I won't show this car again.", "uk": "Більше не показуватиму."},
+    "car_hidden_mark": {"en": "🚫 <b>Don't show again</b>", "uk": "🚫 <b>Не показувати</b>"},
     "car_status_title": {"en": "🚗 <b>Car status</b>", "uk": "🚗 <b>Car status</b>"},
     "car_reset_done": {"en": "🔄 Tracked listings cleared.", "uk": "🔄 Tracked listings cleared."},
     "car_search_failed": {

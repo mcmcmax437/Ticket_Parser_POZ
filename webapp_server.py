@@ -406,8 +406,12 @@ class _Handler(BaseHTTPRequestHandler):
         logger.info("webapp " + fmt, *args)
 
     def _authorized(self) -> bool:
-        if self.headers.get("X-Local-Preview") == "1":
-            return self.client_address[0] in {"127.0.0.1", "::1"}
+        if (
+            os.getenv("WEBAPP_ALLOW_LOCAL_PREVIEW") == "1"
+            and self.headers.get("X-Local-Preview") == "1"
+            and self.client_address[0] in {"127.0.0.1", "::1"}
+        ):
+            return True
         return _check_init_data(self.headers.get("X-Telegram-Init-Data", ""))
 
     def _send(self, code: int, payload: dict | bytes, content_type: str) -> None:

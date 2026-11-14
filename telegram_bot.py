@@ -6,9 +6,12 @@ from datetime import date
 
 from telegram import (
     BotCommand,
+    BotCommandScopeChat,
+    BotCommandScopeDefault,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
+    MenuButtonDefault,
     MenuButtonWebApp,
     ReplyKeyboardMarkup,
     Update,
@@ -17,11 +20,13 @@ from telegram import (
 from telegram.error import BadRequest
 from telegram.ext import (
     Application,
+    ApplicationHandlerStop,
     BaseHandler,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    TypeHandler,
     filters,
 )
 
@@ -105,9 +110,39 @@ def _lang() -> Language:
     return normalize_language(str(load_user_config().get("language", "en")))
 
 
-def _authorized(update: Update, settings: Settings) -> bool:
+def _update_chat_id(update: Update) -> str | None:
     chat = update.effective_chat
-    return chat is not None and str(chat.id) == settings.telegram_chat_id
+    if chat is not None:
+        return str(chat.id)
+    raw = (update.api_kwargs or {}).get("widget_query") or {}
+    if isinstance(raw, dict):
+        widget_chat = (raw.get("chat") or {}).get("id")
+        if widget_chat is not None:
+            return str(widget_chat)
+    return None
+
+
+def _authorized(update: Update, settings: Settings) -> bool:
+    chat_id = _update_chat_id(update)
+    return chat_id is not None and chat_id == settings.telegram_chat_id
+
+
+async def _owner_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if _authorized(update, load_settings()):
+        return
+    raw = dict((update.api_kwargs or {}).get("widget_query") or {})
+    query_id = raw.get("id")
+    if query_id:
+        try:
+            await context.bot.do_api_request("answerWidgetQuery", {"widget_query_id": query_id})
+        except Exception:
+            logger.info("Ignored a widget query from another chat")
+    if update.callback_query is not None:
+        try:
+            await update.callback_query.answer()
+        except BadRequest:
+            pass
+    raise ApplicationHandlerStop
 
 
 def _manager(application: Application) -> SearchManager:
@@ -959,6 +994,8 @@ async def settings_command(
 
 
 async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _authorized(update, load_settings()):
+        return
     await _stop_search(update, context)
 
 
@@ -1178,6 +1215,46 @@ async def _show_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(text, parse_mode=PARSE_MODE, reply_markup=_reply_keyboard(lang))
 
 
+def _hidden_body(body: str, mark: str) -> str:
+    if body.startswith(mark):
+        return body
+    if not body:
+        return mark
+    return f"{mark}\n{body}"
+
+
+async def _mark_car_hidden(query, lang: Language) -> None:
+    message = query.message
+    mark = t("car_hidden_mark", lang)
+    if message is None:
+        return
+    try:
+        if message.photo:
+            await query.edit_message_caption(
+                caption=_hidden_body(message.caption_html or "", mark),
+                parse_mode=PARSE_MODE,
+                reply_markup=None,
+            )
+            return
+        if message.text:
+            await query.edit_message_text(
+                text=_hidden_body(message.text_html or "", mark),
+                parse_mode=PARSE_MODE,
+                reply_markup=None,
+                disable_web_page_preview=False,
+            )
+            return
+        await query.edit_message_reply_markup(reply_markup=None)
+    except BadRequest as exc:
+        if "message is not modified" in str(exc).lower():
+            return
+        logger.info("Could not mark the hidden car | %s", exc)
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except BadRequest:
+            logger.info("Hide button was already removed")
+
+
 def _is_settings_message(query) -> bool:
     markup = query.message.reply_markup if query.message else None
     if not markup or not markup.inline_keyboard:
@@ -1210,10 +1287,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if listing_id_ok(listing_id):
             dismiss_listing(CAR_STATE_FILE, listing_id)
         await query.answer(t("car_hidden", lang))
-        try:
-            await query.edit_message_reply_markup(reply_markup=None)
-        except BadRequest:
-            logger.info("Hide button was already removed | id=%s", listing_id)
+        await _mark_car_hidden(query, lang)
         return
 
     if data in {"prompt:date", "prompt:until", "prompt:from"}:
@@ -1441,16 +1515,17 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def _set_bot_commands(application: Application) -> None:
     lang = _lang()
-    await application.bot.set_my_commands(
-        [
-            BotCommand("start", t("cmd_start", lang)),
-            BotCommand("menu", t("cmd_menu", lang)),
-            BotCommand("monitor", t("cmd_monitor", lang)),
-            BotCommand("stop", t("cmd_stop", lang)),
-            BotCommand("settings", t("cmd_settings", lang)),
-            BotCommand("car", t("cmd_car", lang)),
-        ]
-    )
+    commands = [
+        BotCommand("start", t("cmd_start", lang)),
+        BotCommand("menu", t("cmd_menu", lang)),
+        BotCommand("monitor", t("cmd_monitor", lang)),
+        BotCommand("stop", t("cmd_stop", lang)),
+        BotCommand("settings", t("cmd_settings", lang)),
+        BotCommand("car", t("cmd_car", lang)),
+    ]
+    chat_id = int(load_settings().telegram_chat_id)
+    await application.bot.set_my_commands(commands, scope=BotCommandScopeChat(chat_id=chat_id))
+    await application.bot.delete_my_commands(scope=BotCommandScopeDefault())
 
 
 async def _send_startup_menu(application: Application) -> None:
@@ -1534,11 +1609,17 @@ def build_application(token: str) -> Application:
     async def post_init(application: Application) -> None:
         start_webapp(application)
         await _set_bot_commands(application)
+        chat_id = int(load_settings().telegram_chat_id)
+        try:
+            await application.bot.set_chat_menu_button(menu_button=MenuButtonDefault())
+        except Exception:
+            logger.exception("Could not clear the public menu button")
         url = _app_url()
         if url:
             try:
                 await application.bot.set_chat_menu_button(
-                    menu_button=MenuButtonWebApp(text="App", web_app=WebAppInfo(url=url))
+                    chat_id=chat_id,
+                    menu_button=MenuButtonWebApp(text="App", web_app=WebAppInfo(url=url)),
                 )
             except Exception:
                 logger.exception("Could not set the Mini App menu button")
@@ -1553,6 +1634,7 @@ def build_application(token: str) -> Application:
         .post_init(post_init)
         .build()
     )
+    application.add_handler(TypeHandler(Update, _owner_gate), group=-1)
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("monitor", monitor_command))
