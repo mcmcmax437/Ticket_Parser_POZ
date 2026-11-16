@@ -8,8 +8,9 @@ from otomoto_client import (
     CarListing,
     CarSearchParams,
     IncompleteSearch,
+    ListingBatch,
     accepted_price_bounds,
-    listing_within_filters,
+    classify_listings,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class BlocketClient:
             query.append(("location", params.region))
         return query
 
-    def get_listings(self, params: CarSearchParams) -> list[CarListing]:
+    def get_listings(self, params: CarSearchParams) -> ListingBatch:
         query = self.search_params(params)
         listings: list[CarListing] = []
         seen: set[str] = set()
@@ -99,17 +100,17 @@ class BlocketClient:
             last = paging.get("last")
             if isinstance(last, int) and page >= last:
                 break
-        kept = [item for item in listings if listing_within_filters(item, params)]
-        if len(kept) != len(listings):
+        batch = classify_listings(listings, params)
+        if batch.rejected:
             logger.info(
                 "Dropped %d Blocket offers outside the car filters | make=%s | model=%s",
-                len(listings) - len(kept),
+                len(batch.rejected),
                 params.make,
                 params.model,
             )
         if failed_page is not None:
-            raise IncompleteSearch(kept, "Blocket", failed_page)
-        return kept
+            raise IncompleteSearch(batch.listings, "Blocket", failed_page, batch.reviewed, batch.rejected)
+        return batch
 
 
 def listing_from_doc(doc: object) -> CarListing | None:

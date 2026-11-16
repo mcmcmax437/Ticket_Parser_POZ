@@ -205,6 +205,16 @@ def car_filter_summary(lang: Language, info: CarSearchInfo) -> str:
     return " · ".join(_esc(p) for p in parts if p)
 
 
+def hourly_report_html(lang: Language, rows: list[tuple[CarSearchInfo, int, int]]) -> str:
+    lines = [t("car_hour_title", lang)]
+    for info, reviewed, rejected in rows:
+        lines.append("")
+        lines.append(f"🚗 {car_filter_summary(lang, info)}")
+        lines.append(t("car_hour_reviewed", lang, count=reviewed))
+        lines.append(t("car_hour_rejected", lang, count=rejected))
+    return "\n".join(lines)
+
+
 def car_search_line(lang: Language, info: CarSearchInfo) -> str:
     return (
         f"🚗 {car_filter_summary(lang, info)}"

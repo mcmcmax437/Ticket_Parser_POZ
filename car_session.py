@@ -18,7 +18,8 @@ from car_monitor import (
 )
 from i18n import normalize_language, t
 from blocket_client import BlocketClient
-from otomoto_client import CarListing, IncompleteSearch, OtomotoClient
+from otomoto_client import CarListing, IncompleteSearch, ListingBatch, OtomotoClient
+from ui_format import hourly_report_html
 from widget_sender import refresh_status_card, send_car_cards
 
 logger = logging.getLogger(__name__)
@@ -33,12 +34,23 @@ class CarWorker:
         self.poll_interval_seconds = int(config["car_poll_interval_seconds"])
         self.language = normalize_language(str(config.get("language", "en")))
         self.known: dict[str, int | None] = {}
+        self.seen_ids: set[str] = set()
+        self.rejected_ids: set[str] = set()
         self.manager: CarManager | None = None
         self.task: asyncio.Task | None = None
         self.stop_event: asyncio.Event | None = None
 
     def _epoch(self) -> int:
         return self.manager.cache_epoch if self.manager is not None else 0
+
+    def note_listings(self, reviewed: tuple[str, ...] | list[str], rejected: tuple[str, ...] | list[str]) -> None:
+        rejected_now = set(rejected)
+        for listing_id in reviewed:
+            self.seen_ids.add(listing_id)
+            if listing_id in rejected_now:
+                self.rejected_ids.add(listing_id)
+            else:
+                self.rejected_ids.discard(listing_id)
 
     @property
     def is_running(self) -> bool:
@@ -151,19 +163,20 @@ class CarWorker:
                 client = BlocketClient() if self.params.source == "blocket" else OtomotoClient()
                 failed_page: int | None = None
                 try:
-                    current = await asyncio.to_thread(client.get_listings, prices_for_query(self.params))
+                    batch = await asyncio.to_thread(client.get_listings, prices_for_query(self.params))
                 except IncompleteSearch as exc:
-                    current = list(exc.listings)
+                    batch = ListingBatch(list(exc.listings), tuple(exc.reviewed), tuple(exc.rejected))
                     failed_page = exc.page
                 except Exception:
                     logger.exception("Car search check failed for %s", self.search_key)
                     await self._notify_failure(application, chat_id, page=None, count=0)
                     continue
-                if current:
-                    await self._publish(application, chat_id, current)
+                self.note_listings(batch.reviewed, batch.rejected)
+                if batch.listings:
+                    await self._publish(application, chat_id, batch.listings)
                     await refresh_status_card(application, chat_id, self.language)
                 if failed_page is not None:
-                    await self._notify_failure(application, chat_id, failed_page, len(current))
+                    await self._notify_failure(application, chat_id, failed_page, len(batch.listings))
         except asyncio.CancelledError:
             logger.info("Car search cancelled | key=%s", self.search_key)
             raise
@@ -173,6 +186,10 @@ class CarManager:
     def __init__(self) -> None:
         self._workers: dict[str, CarWorker] = {}
         self.cache_epoch = 0
+        self.report_every = 3600
+        self._report_app: Application | None = None
+        self._report_chat_id: int | None = None
+        self._report_task: asyncio.Task | None = None
 
     def forget_tracked(self) -> None:
         self.cache_epoch += 1
@@ -219,13 +236,67 @@ class CarManager:
             worker.manager = self
             self._workers[key] = worker
             await worker.start(application, chat_id)
+        if any(worker.is_running for worker in self._workers.values()):
+            self._arm_reporter(application, chat_id)
         return keys
+
+    def _arm_reporter(self, application: Application, chat_id: int) -> None:
+        self._report_app = application
+        self._report_chat_id = chat_id
+        if self._report_task and not self._report_task.done():
+            return
+        self._report_task = asyncio.create_task(self._hourly_loop(), name="car-hourly-report")
+
+    async def _hourly_loop(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self.report_every)
+                try:
+                    await self.send_hourly_report()
+                except Exception:
+                    logger.exception("Hourly car report failed")
+                if not any(worker.is_running for worker in self._workers.values()):
+                    return
+        except asyncio.CancelledError:
+            raise
+
+    async def send_hourly_report(self) -> bool:
+        workers = [worker for worker in self._workers.values() if worker.is_running]
+        if not workers or self._report_app is None or self._report_chat_id is None:
+            return False
+        rows = [
+            (worker.info, len(worker.seen_ids), len(worker.rejected_ids))
+            for worker in workers
+        ]
+        text = hourly_report_html(workers[0].language, rows)
+        await self._report_app.bot.send_message(
+            chat_id=self._report_chat_id,
+            text=text,
+            parse_mode="HTML",
+        )
+        for worker in workers:
+            worker.seen_ids.clear()
+            worker.rejected_ids.clear()
+        return True
+
+    async def _cancel_reporter_if_idle(self) -> None:
+        if any(worker.is_running for worker in self._workers.values()):
+            return
+        task = self._report_task
+        self._report_task = None
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     async def stop_key(self, search_key: str) -> bool:
         worker = self._workers.get(search_key)
         if worker is None or not worker.is_running:
             return False
         await worker.stop()
+        await self._cancel_reporter_if_idle()
         return True
 
     async def stop_config(self, config: dict) -> bool:
@@ -245,6 +316,7 @@ class CarManager:
             if worker.is_running:
                 await worker.stop()
                 stopped += 1
+        await self._cancel_reporter_if_idle()
         return stopped
 
 

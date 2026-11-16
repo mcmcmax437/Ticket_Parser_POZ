@@ -193,6 +193,12 @@ TRANSLATIONS: dict[str, dict[Language, str]] = {
     "car_hidden_mark": {"en": "🚫 <b>Don't show again</b>", "uk": "🚫 <b>Не показувати</b>"},
     "car_status_title": {"en": "🚗 <b>Car status</b>", "uk": "🚗 <b>Car status</b>"},
     "car_reset_done": {"en": "🔄 Tracked listings cleared.", "uk": "🔄 Tracked listings cleared."},
+    "car_hour_title": {"en": "🕐 <b>Hourly report</b>", "uk": "🕐 <b>Годинний звіт</b>"},
+    "car_hour_reviewed": {"en": "Viewed: {count}", "uk": "Переглянуто: {count}"},
+    "car_hour_rejected": {
+        "en": "Did not pass the filter: {count}",
+        "uk": "Не пройшли фільтрацію: {count}",
+    },
     "car_search_failed": {
         "en": "{site} did not answer. No cars from this check.",
         "uk": "{site} не відповів. Цього разу авто не знайдено.",
