@@ -69,14 +69,44 @@ class CarSearchParams:
     source: str = ""
 
 
+@dataclass(frozen=True)
+class ListingBatch:
+    listings: list[CarListing]
+    reviewed: tuple[str, ...]
+    rejected: tuple[str, ...]
+
+
 class IncompleteSearch(Exception):
     """Pages already read stay available when a later page fails."""
 
-    def __init__(self, listings: list[CarListing], site: str, page: int) -> None:
+    def __init__(
+        self,
+        listings: list[CarListing],
+        site: str,
+        page: int,
+        reviewed: tuple[str, ...] = (),
+        rejected: tuple[str, ...] = (),
+    ) -> None:
         self.listings = listings
         self.site = site
         self.page = page
+        self.reviewed = reviewed
+        self.rejected = rejected
         super().__init__(site)
+
+
+def classify_listings(
+    listings: list[CarListing],
+    params: CarSearchParams,
+    matched: list[CarListing] | None = None,
+) -> ListingBatch:
+    """Count every parsed offer, then keep only those that pass the local filters."""
+    pool = listings if matched is None else matched
+    kept = [item for item in pool if listing_within_filters(item, params)]
+    kept_ids = {item.listing_id for item in kept}
+    reviewed = tuple(item.listing_id for item in listings)
+    rejected = tuple(listing_id for listing_id in reviewed if listing_id not in kept_ids)
+    return ListingBatch(kept, reviewed, rejected)
 
 
 def _number(text: str) -> int | None:
@@ -189,7 +219,7 @@ class OtomotoClient:
             query["search[filter_enum_damaged]"] = params.damaged
         return query
 
-    def get_listings(self, params: CarSearchParams) -> list[CarListing]:
+    def get_listings(self, params: CarSearchParams) -> ListingBatch:
         url = self.search_url(params)
         base_query = self.search_params(params)
         listings: list[CarListing] = []
@@ -214,17 +244,17 @@ class OtomotoClient:
             listings.extend(fresh)
 
         matched = self.filter_make_model(listings, params)
-        kept = [item for item in matched if listing_within_filters(item, params)]
-        if len(kept) != len(matched):
+        batch = classify_listings(listings, params, matched)
+        if batch.rejected:
             logger.info(
                 "Dropped %d offers outside the car filters | make=%s | model=%s",
-                len(matched) - len(kept),
+                len(batch.rejected),
                 params.make,
                 params.model,
             )
         if failed_page is not None:
-            raise IncompleteSearch(kept, "Otomoto", failed_page)
-        return kept
+            raise IncompleteSearch(batch.listings, "Otomoto", failed_page, batch.reviewed, batch.rejected)
+        return batch
 
     def parse_listings(self, body: str) -> list[CarListing]:
         tree = document_fromstring(body)

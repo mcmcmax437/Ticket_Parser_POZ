@@ -89,6 +89,8 @@ class PartialPageTest(unittest.TestCase):
         self.assertEqual(caught.exception.page, 2)
         self.assertEqual(caught.exception.site, "Blocket")
         self.assertEqual([item.listing_id for item in caught.exception.listings], ["b23991025"])
+        self.assertEqual(caught.exception.reviewed, ("b23991025",))
+        self.assertEqual(caught.exception.rejected, ())
         self.assertNotIn("http", str(caught.exception))
 
     def test_blocket_page_one_failure_has_no_cars(self) -> None:
@@ -112,6 +114,8 @@ class PartialPageTest(unittest.TestCase):
                 client.get_listings(CarSearchParams(make="toyota"))
         self.assertEqual(caught.exception.page, 2)
         self.assertEqual([item.listing_id for item in caught.exception.listings], ["615"])
+        self.assertEqual(caught.exception.reviewed, ("615",))
+        self.assertEqual(caught.exception.rejected, ())
 
 
 class CacheResetTest(unittest.TestCase):
